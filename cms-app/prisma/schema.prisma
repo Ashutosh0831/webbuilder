@@ -81,7 +81,7 @@ model Customer {
 // ============ USER / AUTH ============
 
 model User {
-  id            String     @id @default(uuid()) @db.Uuid
+  id            String     @id @default(cuid())
   customerId    String?    @db.Uuid
   email         String     @unique
   name          String?
@@ -116,7 +116,7 @@ model User {
 
 model Session {
   id             String   @id @default(uuid()) @db.Uuid
-  userId         String   @db.Uuid
+  userId         String
   token          String   @unique
   ipAddress      String?
   userAgent      String?
@@ -200,7 +200,7 @@ model RolePermission {
 }
 
 model UserRole {
-  userId String @db.Uuid
+  userId String
   roleId String @db.Uuid
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -242,7 +242,7 @@ model Website {
 
 model WebsiteMember {
   websiteId String   @db.Uuid
-  userId    String   @db.Uuid
+  userId    String
   roleId    String   @db.Uuid
   createdAt DateTime @default(now())
 
@@ -290,7 +290,7 @@ model Page {
 model PageVersion {
   id          String   @id @default(uuid()) @db.Uuid
   pageId      String   @db.Uuid
-  authorId    String   @db.Uuid
+  authorId    String
   version     Int
   content     Json
   changeNote  String?
@@ -466,8 +466,8 @@ model PublicationRequest {
   id            String            @id @default(uuid()) @db.Uuid
   publicationId String            @db.Uuid
   pageId        String            @db.Uuid
-  requestedById String            @db.Uuid
-  reviewedById  String?           @db.Uuid
+  requestedById String
+  reviewedById  String?
   status        PublicationStatus @default(PENDING)
   comment       String?
   createdAt     DateTime          @default(now())
@@ -486,7 +486,7 @@ model PublicationRequest {
 
 model AuditLog {
   id        String   @id @default(uuid()) @db.Uuid
-  actorId   String?  @db.Uuid
+  actorId   String?
   action    String
   resource  String
   metadata  Json?

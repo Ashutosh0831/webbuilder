@@ -60,7 +60,7 @@ CREATE TABLE "user" (
 -- CreateTable
 CREATE TABLE "session" (
     "id" UUID NOT NULL,
-    "userId" UUID NOT NULL,
+    "userId" TEXT NOT NULL,
     "token" TEXT NOT NULL,
     "ipAddress" TEXT,
     "userAgent" TEXT,
@@ -134,7 +134,7 @@ CREATE TABLE "RolePermission" (
 
 -- CreateTable
 CREATE TABLE "UserRole" (
-    "userId" UUID NOT NULL,
+    "userId" TEXT NOT NULL,
     "roleId" UUID NOT NULL,
 
     CONSTRAINT "UserRole_pkey" PRIMARY KEY ("userId","roleId")
@@ -160,7 +160,7 @@ CREATE TABLE "Website" (
 -- CreateTable
 CREATE TABLE "WebsiteMember" (
     "websiteId" UUID NOT NULL,
-    "userId" UUID NOT NULL,
+    "userId" TEXT NOT NULL,
     "roleId" UUID NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -191,7 +191,7 @@ CREATE TABLE "Page" (
 CREATE TABLE "PageVersion" (
     "id" UUID NOT NULL,
     "pageId" UUID NOT NULL,
-    "authorId" UUID NOT NULL,
+    "authorId" TEXT NOT NULL,
     "version" INTEGER NOT NULL,
     "content" JSONB NOT NULL,
     "changeNote" TEXT,
@@ -336,8 +336,8 @@ CREATE TABLE "PublicationRequest" (
     "id" UUID NOT NULL,
     "publicationId" UUID NOT NULL,
     "pageId" UUID NOT NULL,
-    "requestedById" UUID NOT NULL,
-    "reviewedById" UUID,
+    "requestedById" TEXT NOT NULL,
+    "reviewedById" TEXT,
     "status" "PublicationStatus" NOT NULL DEFAULT 'PENDING',
     "comment" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -349,7 +349,7 @@ CREATE TABLE "PublicationRequest" (
 -- CreateTable
 CREATE TABLE "AuditLog" (
     "id" UUID NOT NULL,
-    "actorId" UUID,
+    "actorId" TEXT,
     "action" TEXT NOT NULL,
     "resource" TEXT NOT NULL,
     "metadata" JSONB,
@@ -511,10 +511,10 @@ CREATE INDEX "AuditLog_action_idx" ON "AuditLog"("action");
 ALTER TABLE "user" ADD CONSTRAINT "user_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "session" ADD CONSTRAINT "session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "session" ADD CONSTRAINT "session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
 
 -- AddForeignKey
-ALTER TABLE "account" ADD CONSTRAINT "account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "account" ADD CONSTRAINT "account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
 
 -- AddForeignKey
 ALTER TABLE "RolePermission" ADD CONSTRAINT "RolePermission_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "Role"("id") ON DELETE CASCADE ON UPDATE CASCADE;
