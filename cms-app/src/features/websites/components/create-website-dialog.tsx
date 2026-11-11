@@ -25,9 +25,11 @@ import {
 } from "@/components/ui/select";
 import {
   createWebsiteSchema,
-  type CreateWebsiteInput,
-  type CreateWebsiteOutput,
 } from "@/lib/validations/website";
+import type { z } from "zod";
+
+type CreateWebsiteInput = z.input<typeof createWebsiteSchema>;
+type CreateWebsiteOutput = z.output<typeof createWebsiteSchema>;
 
 export function CreateWebsiteDialog() {
   const [open, setOpen] = useState(false);

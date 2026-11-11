@@ -81,21 +81,27 @@ model Customer {
 // ============ USER / AUTH ============
 
 model User {
-  id           String     @id @default(uuid()) @db.Uuid
-  customerId   String?    @db.Uuid
-  email        String     @unique
-  passwordHash String
-  name         String?
-  status       UserStatus @default(ACTIVE)
-  mfaEnabled   Boolean    @default(false)
-  mfaSecret    String?
-  lastLoginAt  DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  deletedAt    DateTime?
+  id            String     @id @default(uuid()) @db.Uuid
+  customerId    String?    @db.Uuid
+  email         String     @unique
+  name          String?
+  emailVerified Boolean    @default(false)
+  image         String?
+  role          String     @default("editor")
+  banned        Boolean    @default(false)
+  banReason     String?
+  banExpires    DateTime?
+  status        UserStatus @default(ACTIVE)
+  mfaEnabled    Boolean    @default(false)
+  mfaSecret     String?
+  lastLoginAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
 
   customer            Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
   sessions            Session[]
+  accounts            Account[]
   userRoles           UserRole[]
   websiteMembers      WebsiteMember[]
   auditLogs           AuditLog[]
@@ -105,21 +111,59 @@ model User {
   @@index([customerId])
   @@index([status])
   @@index([deletedAt])
+  @@map("user")
 }
 
 model Session {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  token     String   @unique
-  ipAddress String?
-  userAgent String?
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  token          String   @unique
+  ipAddress      String?
+  userAgent      String?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+  impersonatedBy String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
 }
 
 // ============ RBAC ============
@@ -168,15 +212,17 @@ model UserRole {
 // ============ WEBSITE ============
 
 model Website {
-  id         String        @id @default(uuid()) @db.Uuid
-  customerId String        @db.Uuid
-  name       String
-  slug       String
-  status     WebsiteStatus @default(DRAFT)
-  locale     String        @default("en")
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  deletedAt  DateTime?
+  id          String        @id @default(uuid()) @db.Uuid
+  customerId  String        @db.Uuid
+  name        String
+  slug        String
+  status      WebsiteStatus @default(DRAFT)
+  locale      String        @default("en")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+  description String?
+  timezone    String        @default("UTC")
 
   customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
   members      WebsiteMember[]
@@ -230,12 +276,15 @@ model Page {
   versions            PageVersion[]
   sections            PageSection[]
   publicationRequests PublicationRequest[]
+  isHomepage          Boolean              @default(false)
+  isSystem            Boolean              @default(false) // protects system pages from deletion
 
   @@unique([websiteId, slug])
   @@index([websiteId])
   @@index([parentId])
   @@index([status])
   @@index([deletedAt])
+  @@index([websiteId, isHomepage])
 }
 
 model PageVersion {

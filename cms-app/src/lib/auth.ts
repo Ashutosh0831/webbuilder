@@ -72,6 +72,10 @@ export const auth = betterAuth({
 
   advanced: {
     cookiePrefix: "cms",
+    database: {
+      generateId: "uuid",
+    //   joins: false,
+    },
     useSecureCookies: process.env.NODE_ENV === "production",
     defaultCookieAttributes: {
       httpOnly: true,

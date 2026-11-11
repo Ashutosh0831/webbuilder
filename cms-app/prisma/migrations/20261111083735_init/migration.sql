@@ -35,12 +35,17 @@ CREATE TABLE "Customer" (
 );
 
 -- CreateTable
-CREATE TABLE "User" (
-    "id" UUID NOT NULL,
+CREATE TABLE "user" (
+    "id" TEXT NOT NULL,
     "customerId" UUID,
     "email" TEXT NOT NULL,
-    "passwordHash" TEXT NOT NULL,
     "name" TEXT,
+    "emailVerified" BOOLEAN NOT NULL DEFAULT false,
+    "image" TEXT,
+    "role" TEXT NOT NULL DEFAULT 'editor',
+    "banned" BOOLEAN NOT NULL DEFAULT false,
+    "banReason" TEXT,
+    "banExpires" TIMESTAMP(3),
     "status" "UserStatus" NOT NULL DEFAULT 'ACTIVE',
     "mfaEnabled" BOOLEAN NOT NULL DEFAULT false,
     "mfaSecret" TEXT,
@@ -49,11 +54,11 @@ CREATE TABLE "User" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "deletedAt" TIMESTAMP(3),
 
-    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "user_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "Session" (
+CREATE TABLE "session" (
     "id" UUID NOT NULL,
     "userId" UUID NOT NULL,
     "token" TEXT NOT NULL,
@@ -61,8 +66,41 @@ CREATE TABLE "Session" (
     "userAgent" TEXT,
     "expiresAt" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "impersonatedBy" TEXT,
 
-    CONSTRAINT "Session_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "session_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "account" (
+    "id" TEXT NOT NULL,
+    "accountId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "accessToken" TEXT,
+    "refreshToken" TEXT,
+    "idToken" TEXT,
+    "accessTokenExpiresAt" TIMESTAMP(3),
+    "refreshTokenExpiresAt" TIMESTAMP(3),
+    "scope" TEXT,
+    "password" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "account_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "verification" (
+    "id" TEXT NOT NULL,
+    "identifier" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "verification_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -113,6 +151,8 @@ CREATE TABLE "Website" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "deletedAt" TIMESTAMP(3),
+    "description" TEXT,
+    "timezone" TEXT NOT NULL DEFAULT 'UTC',
 
     CONSTRAINT "Website_pkey" PRIMARY KEY ("id")
 );
@@ -141,6 +181,8 @@ CREATE TABLE "Page" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "deletedAt" TIMESTAMP(3),
+    "isHomepage" BOOLEAN NOT NULL DEFAULT false,
+    "isSystem" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "Page_pkey" PRIMARY KEY ("id")
 );
@@ -328,25 +370,31 @@ CREATE INDEX "Customer_status_idx" ON "Customer"("status");
 CREATE INDEX "Customer_deletedAt_idx" ON "Customer"("deletedAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+CREATE UNIQUE INDEX "user_email_key" ON "user"("email");
 
 -- CreateIndex
-CREATE INDEX "User_customerId_idx" ON "User"("customerId");
+CREATE INDEX "user_customerId_idx" ON "user"("customerId");
 
 -- CreateIndex
-CREATE INDEX "User_status_idx" ON "User"("status");
+CREATE INDEX "user_status_idx" ON "user"("status");
 
 -- CreateIndex
-CREATE INDEX "User_deletedAt_idx" ON "User"("deletedAt");
+CREATE INDEX "user_deletedAt_idx" ON "user"("deletedAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Session_token_key" ON "Session"("token");
+CREATE UNIQUE INDEX "session_token_key" ON "session"("token");
 
 -- CreateIndex
-CREATE INDEX "Session_userId_idx" ON "Session"("userId");
+CREATE INDEX "session_userId_idx" ON "session"("userId");
 
 -- CreateIndex
-CREATE INDEX "Session_expiresAt_idx" ON "Session"("expiresAt");
+CREATE INDEX "session_expiresAt_idx" ON "session"("expiresAt");
+
+-- CreateIndex
+CREATE INDEX "account_userId_idx" ON "account"("userId");
+
+-- CreateIndex
+CREATE INDEX "verification_identifier_idx" ON "verification"("identifier");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Role_name_key" ON "Role"("name");
@@ -380,6 +428,9 @@ CREATE INDEX "Page_status_idx" ON "Page"("status");
 
 -- CreateIndex
 CREATE INDEX "Page_deletedAt_idx" ON "Page"("deletedAt");
+
+-- CreateIndex
+CREATE INDEX "Page_websiteId_isHomepage_idx" ON "Page"("websiteId", "isHomepage");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Page_websiteId_slug_key" ON "Page"("websiteId", "slug");
@@ -457,10 +508,13 @@ CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
 CREATE INDEX "AuditLog_action_idx" ON "AuditLog"("action");
 
 -- AddForeignKey
-ALTER TABLE "User" ADD CONSTRAINT "User_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "user" ADD CONSTRAINT "user_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "session" ADD CONSTRAINT "session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "account" ADD CONSTRAINT "account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "RolePermission" ADD CONSTRAINT "RolePermission_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "Role"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -469,7 +523,7 @@ ALTER TABLE "RolePermission" ADD CONSTRAINT "RolePermission_roleId_fkey" FOREIGN
 ALTER TABLE "RolePermission" ADD CONSTRAINT "RolePermission_permissionId_fkey" FOREIGN KEY ("permissionId") REFERENCES "Permission"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "UserRole" ADD CONSTRAINT "UserRole_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserRole" ADD CONSTRAINT "UserRole_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "UserRole" ADD CONSTRAINT "UserRole_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "Role"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -481,7 +535,7 @@ ALTER TABLE "Website" ADD CONSTRAINT "Website_customerId_fkey" FOREIGN KEY ("cus
 ALTER TABLE "WebsiteMember" ADD CONSTRAINT "WebsiteMember_websiteId_fkey" FOREIGN KEY ("websiteId") REFERENCES "Website"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "WebsiteMember" ADD CONSTRAINT "WebsiteMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "WebsiteMember" ADD CONSTRAINT "WebsiteMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "WebsiteMember" ADD CONSTRAINT "WebsiteMember_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "Role"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -496,7 +550,7 @@ ALTER TABLE "Page" ADD CONSTRAINT "Page_parentId_fkey" FOREIGN KEY ("parentId") 
 ALTER TABLE "PageVersion" ADD CONSTRAINT "PageVersion_pageId_fkey" FOREIGN KEY ("pageId") REFERENCES "Page"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PageVersion" ADD CONSTRAINT "PageVersion_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PageVersion" ADD CONSTRAINT "PageVersion_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "PageSection" ADD CONSTRAINT "PageSection_pageId_fkey" FOREIGN KEY ("pageId") REFERENCES "Page"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -538,7 +592,7 @@ ALTER TABLE "PublicationRequest" ADD CONSTRAINT "PublicationRequest_publicationI
 ALTER TABLE "PublicationRequest" ADD CONSTRAINT "PublicationRequest_pageId_fkey" FOREIGN KEY ("pageId") REFERENCES "Page"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PublicationRequest" ADD CONSTRAINT "PublicationRequest_requestedById_fkey" FOREIGN KEY ("requestedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PublicationRequest" ADD CONSTRAINT "PublicationRequest_requestedById_fkey" FOREIGN KEY ("requestedById") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;

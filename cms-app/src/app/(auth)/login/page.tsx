@@ -37,7 +37,6 @@ export default function LoginPage() {
         return;
       }
       router.push("/dashboard");
-      router.refresh();
     } catch {
       setServerError("Unable to sign in. Please try again.");
     } finally {

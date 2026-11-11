@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  serverExternalPackages: ["@prisma/adapter-pg", "@prisma/client", "pg"],
   turbopack: {
     rules: {
       "*.css": {

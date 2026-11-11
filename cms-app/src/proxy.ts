@@ -1,30 +1,35 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { auth } from "@/lib/auth";
 
-const PUBLIC_ROUTES = ["/login", "/forgot-password", "/reset-password", "/api/auth"];
+const RESERVED_PREFIXES = ["/_sites", "/api", "/_next", "/admin", "/dashboard"];
 
-export async function proxy(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
+  // Skip internal paths
+  if (RESERVED_PREFIXES.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
-  const session = await auth.api.getSession({ headers: request.headers });
-
-  if (!session?.user) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
+  // Skip files with extensions (favicon, images, etc.)
+  if (/\.[a-zA-Z0-9]+$/.test(pathname)) {
+    return NextResponse.next();
   }
 
-  // Admin route guard
-  if (pathname.startsWith("/admin") && session.user.role !== "super_admin") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+  const hostname = request.nextUrl.hostname.toLowerCase();
+  if (!hostname) {
+    return new NextResponse("Missing host header", { status: 400 });
   }
 
-  return NextResponse.next();
+  // Keep the local CMS landing page reachable; localhost is not a tenant domain.
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
+    return NextResponse.next();
+  }
+
+  // Rewrite all public paths into the domain-scoped route
+  const url = request.nextUrl.clone();
+  url.pathname = `/_sites/${hostname}${pathname}`;
+  return NextResponse.rewrite(url);
 }
 
 export const config = {
