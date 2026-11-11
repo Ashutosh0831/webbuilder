@@ -26,4 +26,9 @@ export const paragraphComponent: ComponentDefinition<Props> = {
       {props.content}
     </p>
   ),
+  editorFields: [
+  { key: "content", label: "Content", control: { type: "textarea", rows: 5 }, group: "content" },
+  { key: "align", label: "Alignment", control: { type: "alignment" }, group: "style" },
+  { key: "spacing", label: "Spacing", control: { type: "spacing" }, group: "style" },
+],
 };

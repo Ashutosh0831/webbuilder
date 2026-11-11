@@ -31,3 +31,18 @@ export const headingComponent: ComponentDefinition<Props> = {
     );
   },
 };
+
+// export const headingComponent: ComponentDefinition<Props> = {
+//   key: "heading",
+//   displayName: "Heading",
+//   // ... existing fields ...
+//   editorFields: [
+//     { key: "text", label: "Text", control: { type: "text", maxLength: 200 }, group: "content" },
+//     { key: "level", label: "Level", control: { type: "select", options: [
+//       { label: "H1", value: "1" }, { label: "H2", value: "2" },
+//       { label: "H3", value: "3" }, { label: "H4", value: "4" },
+//     ]}, group: "content" },
+//     { key: "align", label: "Alignment", control: { type: "alignment" }, group: "style" },
+//     { key: "spacing", label: "Spacing", control: { type: "spacing" }, group: "style" },
+//   ],
+// };

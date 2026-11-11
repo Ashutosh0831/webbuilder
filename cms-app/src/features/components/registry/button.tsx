@@ -40,4 +40,16 @@ export const buttonComponent: ComponentDefinition<Props> = {
       </a>
     );
   },
+  editorFields: [
+  { key: "label", label: "Label", control: { type: "text", maxLength: 60 }, group: "content" },
+  { key: "href", label: "Link", control: { type: "url", allowRelative: true }, group: "content" },
+  { key: "variant", label: "Variant", control: { type: "select", options: [
+    { label: "Primary", value: "primary" },
+    { label: "Secondary", value: "secondary" },
+    { label: "Outline", value: "outline" },
+  ]}, group: "style" },
+  { key: "size", label: "Size", control: { type: "select", options: [
+    { label: "Small", value: "sm" }, { label: "Medium", value: "md" }, { label: "Large", value: "lg" },
+  ]}, group: "style" },
+],
 };

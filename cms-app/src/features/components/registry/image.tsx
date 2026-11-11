@@ -31,4 +31,9 @@ export const imageComponent: ComponentDefinition<Props> = {
       />
     </div>
   ),
+  editorFields: [
+  { key: "src", label: "Image URL", control: { type: "image", altRequired: true }, group: "content" },
+  { key: "alt", label: "Alt Text", control: { type: "text", maxLength: 200 }, group: "content" },
+  { key: "spacing", label: "Spacing", control: { type: "spacing" }, group: "style" },
+],
 };

@@ -16,6 +16,8 @@ export interface ComponentDefinition<TProps = unknown> {
   allowedChildren: string[];
   /** Renderer. Receives already-validated props. */
   render: ComponentType<{ props: TProps; children?: ReactNode }>;
+  /** Optional editor metadata. If absent, no properties are editable. */
+  editorFields?: EditorField[];
 }
 
 export type ComponentRegistry = Record<string, ComponentDefinition>;
@@ -34,4 +36,25 @@ export interface RenderedNode {
   definition: ComponentDefinition;
   props: unknown;
   children: React.ReactNode;
+}
+
+export type EditorControl =
+  | { type: "text"; placeholder?: string; maxLength?: number }
+  | { type: "textarea"; rows?: number }
+  | { type: "number"; min?: number; max?: number; step?: number }
+  | { type: "boolean" }
+  | { type: "select"; options: { label: string; value: string }[] }
+  | { type: "color" }
+  | { type: "image"; altRequired?: boolean }
+  | { type: "url"; allowRelative?: boolean }
+  | { type: "spacing" }
+  | { type: "alignment" };
+
+export interface EditorField {
+  key: string;
+  label: string;
+  control: EditorControl;
+  description?: string;
+  /** Optional: group related fields visually */
+  group?: "content" | "style" | "advanced";
 }

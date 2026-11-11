@@ -1,5 +1,7 @@
 import { prisma } from "@/server/db/prisma";
 import { cache } from "react";
+import { resolveProps } from "@/features/builder/resolve";
+import type { BuilderSection } from "@/features/builder/types";
 
 /**
  * Resolve a published page by website + slug.
@@ -35,3 +37,12 @@ export const resolvePublishedPage = cache(
     };
   }
 );
+
+// src/server/queries/public-page.ts (in the page resolver)
+export function resolveAllBreakpoints(section: BuilderSection) {
+  return {
+    mobile: section.props,
+    tablet: resolveProps(section, "tablet"),
+    desktop: resolveProps(section, "desktop"),
+  };
+}

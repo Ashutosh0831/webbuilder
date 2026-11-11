@@ -4,7 +4,9 @@ import { resolveWebsiteByDomain } from "@/server/queries/public-website";
 import { resolvePublishedPage } from "@/server/queries/public-page";
 import { renderPage } from "@/features/components/renderer";
 import { generatePageMetadata } from "@/server/seo/metadata";
-import { ThemeStyles } from "@/features/themes/theme-styles";
+import { generateThemeCssForWebsite } from "@/features/themes/generate-css";
+import { defaultTokens } from "@/features/themes/default-tokens";
+import { themeTokensSchema } from "@/lib/validations/themes";
 
 interface PageProps {
   params: Promise<{ domain: string; slug?: string[] }>;
@@ -44,12 +46,17 @@ export default async function PublicPage({ params }: PageProps) {
     console.error("[public-render]", { websiteId: website.id, pageId: resolved.page.id, errors });
   }
 
+  const theme = website.themes[0]?.theme;
+  const parsed = themeTokensSchema.safeParse(theme?.tokens ?? {});
+  const tokens = parsed.success ? parsed.data : defaultTokens;
+  const themeCss = generateThemeCssForWebsite(tokens, website.id).replace(/</g, "\\3c ");
+
   return (
     <html lang={website.locale}>
       <head>
-        <ThemeStyles tokens={website.themes[0]?.theme.tokens ?? {}} />
+        <style dangerouslySetInnerHTML={{ __html: themeCss }} />
       </head>
-      <body>
+      <body data-theme={website.id}>
         <main>{nodes}</main>
       </body>
     </html>
