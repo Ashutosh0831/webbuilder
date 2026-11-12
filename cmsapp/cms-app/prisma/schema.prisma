@@ -1,0 +1,546 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============ ENUMS ============
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+  ARCHIVED
+}
+
+enum CustomerStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+  ARCHIVED
+}
+
+enum WebsiteStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum PageStatus {
+  DRAFT
+  IN_REVIEW
+  PUBLISHED
+  SCHEDULED
+  ARCHIVED
+}
+
+enum DomainStatus {
+  PENDING_DNS
+  VERIFIED
+  TLS_PROVISIONING
+  ACTIVE
+  FAILED
+  SUSPENDED
+}
+
+enum PublicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PUBLISHED
+  FAILED
+}
+
+enum ContentResourceType {
+  WEBSITE
+  THEME
+}
+
+// ============ CUSTOMER ============
+
+model Customer {
+  id           String         @id @default(uuid()) @db.Uuid
+  name         String
+  company      String?
+  contactEmail String         @unique
+  status       CustomerStatus @default(ACTIVE)
+  plan         String         @default("free")
+  websiteQuota Int            @default(3)
+  storageQuota BigInt         @default(1073741824)
+  storageUsed  BigInt         @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  users    User[]
+  websites Website[]
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+// ============ USER / AUTH ============
+
+model User {
+  id            String     @id @default(cuid())
+  customerId    String?    @db.Uuid
+  email         String     @unique
+  name          String?
+  emailVerified Boolean    @default(false)
+  image         String?
+  role          String     @default("editor")
+  banned        Boolean    @default(false)
+  banReason     String?
+  banExpires    DateTime?
+  status        UserStatus @default(ACTIVE)
+  mfaEnabled    Boolean    @default(false)
+  mfaSecret     String?
+  lastLoginAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  customer            Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sessions            Session[]
+  accounts            Account[]
+  userRoles           UserRole[]
+  websiteMembers      WebsiteMember[]
+  auditLogs           AuditLog[]
+  pageVersions        PageVersion[]
+  publicationRequests PublicationRequest[]
+  approvedPublicationRequests PublicationRequest[] @relation("ApprovedRequests")
+  contentVersions     ContentVersion[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("user")
+}
+
+model Session {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String
+  token          String   @unique
+  ipAddress      String?
+  userAgent      String?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+  impersonatedBy String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ============ RBAC ============
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  permissions    RolePermission[]
+  userRoles      UserRole[]
+  websiteMembers WebsiteMember[]
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId String
+  roleId String @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+// ============ WEBSITE ============
+
+model Website {
+  id          String        @id @default(uuid()) @db.Uuid
+  customerId  String        @db.Uuid
+  name        String
+  slug        String
+  status      WebsiteStatus @default(DRAFT)
+  locale      String        @default("en")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+  description String?
+  timezone    String        @default("UTC")
+  version     Int           @default(0)
+
+  customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  members      WebsiteMember[]
+  pages        Page[]
+  themes       WebsiteTheme[]
+  media        Media[]
+  menus        Menu[]
+  domains      WebsiteDomain[]
+  settings     WebsiteSettings?
+  publications Publication[]
+  contentVersions ContentVersion[]
+
+  @@unique([customerId, slug])
+  @@index([customerId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model WebsiteMember {
+  websiteId String   @db.Uuid
+  userId    String
+  roleId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([websiteId, userId])
+  @@index([userId])
+}
+
+// ============ PAGE ============
+
+model Page {
+  id          String     @id @default(uuid()) @db.Uuid
+  websiteId   String     @db.Uuid
+  parentId    String?    @db.Uuid
+  title       String
+  slug        String
+  status      PageStatus @default(DRAFT)
+  template    String?
+  seo         Json?
+  publishedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+  version Int @default(0)  // incremented on every save
+  publishedVersionId String?   @db.Uuid
+  publishedVersion   PageVersion? @relation("PagePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: Restrict)
+
+  website             Website              @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  parent              Page?                @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children            Page[]               @relation("PageHierarchy")
+  versions            PageVersion[]
+  sections            PageSection[]
+  publicationRequests PublicationRequest[]
+  isHomepage          Boolean              @default(false)
+  isSystem            Boolean              @default(false) // protects system pages from deletion
+
+  @@unique([websiteId, slug])
+  @@index([websiteId])
+  @@index([parentId])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([websiteId, isHomepage])
+}
+
+model PageVersion {
+  id          String   @id @default(uuid()) @db.Uuid
+  pageId      String   @db.Uuid
+  authorId    String
+  version     Int
+  content     Json
+  changeNote  String?
+  isPublished Boolean  @default(false)
+  publishedAt DateTime?
+  snapshot    Json?
+  publicationId String? @db.Uuid
+  createdAt   DateTime @default(now())
+
+  page   Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  publishedPages Page[] @relation("PagePublishedVersion")
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  publication Publication? @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  publicationRequests PublicationRequest[]
+
+  @@unique([pageId, version])
+  @@index([pageId])
+  @@index([createdAt])
+}
+
+model PageSection {
+  id             String   @id @default(uuid()) @db.Uuid
+  pageId         String   @db.Uuid
+  componentDefId String   @db.Uuid
+  sortOrder      Int
+  props          Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  page         Page                @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  componentDef ComponentDefinition @relation(fields: [componentDefId], references: [id], onDelete: Restrict)
+
+  @@index([pageId, sortOrder])
+}
+
+// ============ COMPONENT / THEME ============
+
+model ComponentDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  typeKey     String   @unique
+  displayName String
+  category    String?
+  schema      Json
+  version     Int      @default(1)
+  isEnabled   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sections PageSection[]
+}
+
+model Theme {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  tokens    Json
+  isDefault Boolean  @default(false)
+  version   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  websiteThemes WebsiteTheme[]
+}
+
+model WebsiteTheme {
+  id        String   @id @default(uuid()) @db.Uuid
+  websiteId String   @db.Uuid
+  themeId   String   @db.Uuid
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  theme   Theme   @relation(fields: [themeId], references: [id], onDelete: Restrict)
+
+  @@unique([websiteId, themeId])
+  @@index([websiteId])
+}
+
+// ============ MEDIA ============
+
+model Media {
+  id        String    @id @default(uuid()) @db.Uuid
+  websiteId String    @db.Uuid
+  filename  String
+  mimeType  String
+  size      BigInt
+  url       String
+  altText   String?
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([deletedAt])
+}
+
+// ============ MENU ============
+
+model Menu {
+  id        String   @id @default(uuid()) @db.Uuid
+  websiteId String   @db.Uuid
+  name      String
+  createdAt DateTime @default(now())
+
+  website Website    @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  items   MenuItem[]
+
+  @@index([websiteId])
+}
+
+model MenuItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  menuId    String   @db.Uuid
+  label     String
+  url       String?
+  pageId    String?  @db.Uuid
+  sortOrder Int
+  parentId  String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  menu     Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  parent   MenuItem?  @relation("MenuItemHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children MenuItem[] @relation("MenuItemHierarchy")
+
+  @@index([menuId, sortOrder])
+}
+
+// ============ DOMAIN ============
+
+model WebsiteDomain {
+  id         String       @id @default(uuid()) @db.Uuid
+  websiteId  String       @db.Uuid
+  domain     String       @unique
+  status     DomainStatus @default(PENDING_DNS)
+  isPrimary  Boolean      @default(false)
+  verifiedAt DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([status])
+}
+
+// ============ SETTINGS ============
+
+model WebsiteSettings {
+  id         String   @id @default(uuid()) @db.Uuid
+  websiteId  String   @unique @db.Uuid
+  robotsTxt  String?
+  faviconUrl String?
+  defaultSeo Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+}
+
+model ContentVersion {
+  id           String              @id @default(uuid()) @db.Uuid
+  websiteId    String              @db.Uuid
+  resourceType ContentResourceType
+  resourceId   String              @db.Uuid
+  version      Int
+  authorId     String?
+  snapshot     Json
+  changeNote   String?
+  createdAt    DateTime            @default(now())
+
+  website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([websiteId, resourceType, resourceId, version])
+  @@index([websiteId, resourceType, resourceId, version])
+  @@index([authorId])
+}
+
+// ============ PUBLICATION ============
+
+model Publication {
+  id          String            @id @default(uuid()) @db.Uuid
+  websiteId   String            @db.Uuid
+  version     Int
+  status      PublicationStatus @default(PENDING)
+  publishedAt DateTime?
+  createdAt   DateTime          @default(now())
+
+  website  Website              @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  requests PublicationRequest[]
+  pageVersions PageVersion[]
+
+  @@unique([websiteId, version])
+  @@index([websiteId])
+  @@index([status])
+}
+
+model PublicationRequest {
+  id            String            @id @default(uuid()) @db.Uuid
+  publicationId String            @db.Uuid
+  pageId        String            @db.Uuid
+  pageVersionId String?           @db.Uuid
+  requestedById String
+  reviewedById  String?
+  status        PublicationStatus @default(PENDING)
+  comment       String?
+  createdAt     DateTime          @default(now())
+  reviewedAt    DateTime?
+
+  approvedById String?
+  approvedBy   User?   @relation("ApprovedRequests", fields: [approvedById], references: [id], onDelete: SetNull)
+  publication Publication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  page        Page        @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  pageVersion PageVersion? @relation(fields: [pageVersionId], references: [id], onDelete: SetNull)
+  requestedBy User        @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+
+  @@index([publicationId])
+  @@index([pageId])
+  @@index([pageVersionId])
+  @@index([status])
+}
+
+// ============ AUDIT LOG ============
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  actorId   String?
+  action    String
+  resource  String
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([action])
+}
