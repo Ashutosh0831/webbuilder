@@ -1,21 +1,26 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPages } from "@/server/services/page";
 import { requireAuth } from "@/server/authz";
 import { prisma } from "@/server/db/prisma";
 import { pageFilterSchema } from "@/lib/validations/page";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FileText } from "lucide-react";
 
-export default async function PagesPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ websiteId: string }>;
-  searchParams: Promise<Record<string, string | undefined>>;
-}) {
+// 1. The default export just provides the Suspense boundary
+export default function PagesPage({ params, searchParams }: { params: Promise<{ websiteId: string }>, searchParams: Promise<Record<string, string | undefined>> }) {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading pages...</div>}>
+      <PagesList params={params} searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+// 2. The inner component does the data fetching
+async function PagesList({ params, searchParams }: { params: Promise<{ websiteId: string }>, searchParams: Promise<Record<string, string | undefined>> }) {
   const { websiteId } = await params;
   const sp = await searchParams;
   const user = await requireAuth();
@@ -31,6 +36,20 @@ export default async function PagesPage({
     notFound();
   }
 
+  if (data.pages.length === 0 && !sp.search) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">{website.name} — Pages</h1>
+          <Link href={`/dashboard/websites/${websiteId}/pages/new`} className={buttonVariants()}>
+            New Page
+          </Link>
+        </div>
+        <EmptyState icon={FileText} title="No pages yet" description="Create your first page to get started." />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -38,51 +57,29 @@ export default async function PagesPage({
           <h1 className="text-2xl font-bold">{website.name} — Pages</h1>
           <p className="text-sm text-muted-foreground">{data.total} total</p>
         </div>
-        <div className="flex gap-2">
-          <Button nativeButton={false} variant="outline" render={<Link href={`/dashboard/websites/${websiteId}/history`}/>}>
-            Version History
-          </Button>
-          <Button nativeButton={false} render={<Link href={`/dashboard/websites/${websiteId}/pages/new`}/>}>
-            New Page
-          </Button>
-        </div>
+        <Link href={`/dashboard/websites/${websiteId}/pages/new`} className={buttonVariants()}>
+          New Page
+        </Link>
       </div>
 
-      {data.pages.length === 0 ? (
-        <EmptyState
-          icon={FileText}
-          title={sp.search ? "No matching pages" : "No pages yet"}
-          description={sp.search ? "Try a different search." : "Create your first page."}
-        />
-      ) : (
-        <ul className="divide-y rounded-md border">
-          {data.pages.map((page) => (
-            <li key={page.id} className="flex items-center justify-between p-4">
-              <div>
-                <Link href={`/dashboard/pages/${page.id}`} className="font-medium hover:underline">
-                  {page.title}
-                </Link>
-                <p className="text-sm text-muted-foreground">
-                  /{page.slug} · {page._count.versions} versions
-                  {page.isHomepage && " · Homepage"}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <Badge variant={page.status === "PUBLISHED" ? "default" : "secondary"}>
-                  {page.status}
-                </Badge>
-                <Button nativeButton={false} size="sm" variant="outline" render={<Link href={`/builder/${websiteId}/${page.id}`} />}>Edit page</Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="flex justify-end gap-2">
-        {data.pages.length > 0 && (
-          <span className="text-sm text-muted-foreground self-center">Page {sp.page ?? 1} of {data.totalPages}</span>
-        )}
-      </div>
+      <ul className="divide-y rounded-md border bg-card">
+        {data.pages.map((page) => (
+          <li key={page.id} className="flex items-center justify-between p-4">
+            <div>
+              <Link href={`/dashboard/pages/${page.id}`} className="font-medium hover:underline">
+                {page.title}
+              </Link>
+              <p className="text-sm text-muted-foreground">
+                /{page.slug} · {page._count.versions} versions
+                {page.isHomepage && " · Homepage"}
+              </p>
+            </div>
+            <Badge variant={page.status === "PUBLISHED" ? "default" : "secondary"}>
+              {page.status}
+            </Badge>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

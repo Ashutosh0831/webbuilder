@@ -61,7 +61,11 @@ export default async function PublicPage({ params }: PageProps) {
   // The root app layout owns <html> and <body>. Returning another pair here
   // would create invalid nested document elements in the App Router.
   return (
-    <div lang={website.locale} data-theme={website.id}>
+    <div
+      lang={website.locale}
+      data-theme={website.id}
+      className="min-h-screen bg-[var(--color-background)] text-[var(--color-foreground)]"
+    >
       <style dangerouslySetInnerHTML={{ __html: themeCss }} />
       <script
         type="application/ld+json"

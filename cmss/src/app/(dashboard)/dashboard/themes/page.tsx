@@ -1,73 +1,44 @@
-import { Palette } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/shared/empty-state";
-import { prisma } from "@/server/db/prisma";
+import { Suspense } from "react";
 import { requireAuth } from "@/server/authz";
+import { prisma } from "@/server/db/prisma";
+import { ThemeEditor } from "@/features/themes/theme-editor";
+import { defaultTokens } from "@/features/themes/default-tokens";
+import { notFound } from "next/navigation";
 
-export const instant = false;
+export default function ThemesPage() {
+  return (
+    <Suspense fallback={<div className="p-8">Loading theme...</div>}>
+      <ThemeLoader />
+    </Suspense>
+  );
+}
 
-export default async function ThemesPage() {
+async function ThemeLoader() {
   const user = await requireAuth();
-  const themes = await prisma.theme.findMany({
-    orderBy: [{ isDefault: "desc" }, { name: "asc" }],
-    take: 100,
+  
+  // Get the first website belonging to this user (or all, if super admin)
+  const website = await prisma.website.findFirst({
+    where: user.role === "super_admin" ? {} : { customer: { users: { some: { id: user.id } } } },
     include: {
-      websiteThemes: {
-        where: {
-          website: {
-            deletedAt: null,
-            ...(user.role === "super_admin" ? {} : { members: { some: { userId: user.id } } }),
-          },
-        },
-        include: { website: { select: { id: true, name: true } } },
-      },
+      themes: { where: { isActive: true }, include: { theme: true } },
     },
   });
 
-  if (themes.length === 0) {
-    return (
-      <EmptyState
-        icon={Palette}
-        title="No themes available"
-        description="Themes will appear here when they are added to the platform."
-      />
-    );
+  if (!website) {
+    return <div className="p-8">Create a website first to edit its theme.</div>;
   }
+
+  const activeTheme = website.themes[0]?.theme;
+  // Fallback to default tokens if the DB is empty
+  const tokens = (activeTheme?.tokens as any) || defaultTokens;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Themes</h1>
-        <p className="text-muted-foreground">Theme catalog and assignments for your websites.</p>
+        <h1 className="text-2xl font-bold">Theme Editor</h1>
+        <p className="text-muted-foreground">Editing theme for {website.name}</p>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {themes.map((theme) => (
-          <Card key={theme.id}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-2">
-                <span>{theme.name}</span>
-                {theme.isDefault && <span className="text-xs font-normal text-muted-foreground">Default</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {theme.websiteThemes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Not assigned to your websites.</p>
-              ) : (
-                <ul className="space-y-2 text-sm">
-                  {theme.websiteThemes.map((assignment) => (
-                    <li key={assignment.id} className="flex items-center justify-between gap-2">
-                      <span>{assignment.website.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {assignment.isActive ? "Active" : "Available"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <ThemeEditor websiteId={website.id} initial={tokens} />
     </div>
   );
 }

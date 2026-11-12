@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth } from "@/server/authz";
+import { DeleteButton } from "@/components/delete-button";
+import { deleteWebsiteAction } from "@/server/actions/delete";
 
 export const instant = false;
 
@@ -66,6 +68,13 @@ export default async function WebsitesPage() {
                 <Badge variant={website.status === "ACTIVE" ? "default" : "secondary"}>
                   {website.status}
                 </Badge>
+                {user.role === "super_admin" && (
+                  <DeleteButton
+                    id={website.id}
+                    type="website"
+                    action={deleteWebsiteAction}
+                  />
+                )}
               </li>
             ))}
           </ul>

@@ -111,7 +111,7 @@ export async function reviewPublishRequest(
   if (request.status !== "PENDING") throw new Error("Request already reviewed");
 
   // Enforce: requester cannot approve their own request (segregation of duties)
-  if (request.requestedById === user.id) {
+  if (request.requestedById === user.id && user.role !== "super_admin") {
     throw new Error("You cannot approve your own publishing request");
   }
 
