@@ -20,6 +20,7 @@ export const createWebsiteSchema = z.object({
 
 export const updateWebsiteSchema = z.object({
   id: z.string().uuid(),
+  expectedVersion: z.number().int().min(0).optional(),
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
   locale: z.enum(["en", "es", "fr", "de"]).optional(),

@@ -17,10 +17,6 @@ export default async function WebsitesPage({
   const user = await requireAuth();
   const { websites, totalPages } = await getWebsites(filter, user.id, user.role ?? "");
 
-  if (websites.length === 0 && !filter.search) {
-    return <EmptyState icon={Globe} title="No websites" description="Create the first website." />;
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -31,24 +27,28 @@ export default async function WebsitesPage({
       <Card>
         <CardHeader><CardTitle>All Websites ({websites.length})</CardTitle></CardHeader>
         <CardContent>
-          <ul className="divide-y">
-            {websites.map((w) => (
-              <li key={w.id} className="flex items-center justify-between py-3">
-                <div>
-                  <Link href={`/admin/websites/${w.id}`} className="font-medium hover:underline">
-                    {w.name}
-                  </Link>
-                  <p className="text-sm text-muted-foreground">
-                    {w.customer.name} · {w.slug} · {w.status} · {w._count.pages} pages · {w._count.members} members
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
+          {websites.length === 0 ? (
+            <EmptyState icon={Globe} title="No websites" description="Create the first website." />
+          ) : (
+            <ul className="divide-y">
+              {websites.map((w) => (
+                <li key={w.id} className="flex items-center justify-between py-3">
+                  <div>
+                    <Link href={`/admin/websites/${w.id}`} className="font-medium hover:underline">
+                      {w.name}
+                    </Link>
+                    <p className="text-sm text-muted-foreground">
+                      {w.customer.name} · {w.slug} · {w.status} · {w._count.pages} pages · {w._count.members} members
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
-      <div className="flex justify-end gap-2">
+      {totalPages > 1 && <div className="flex justify-end gap-2">
         {filter.page > 1 && (
           <Button render={<Link href={`?page=${filter.page - 1}`} />} variant="outline" size="sm">Previous</Button>
         )}
@@ -56,7 +56,7 @@ export default async function WebsitesPage({
         {filter.page < totalPages && (
           <Button render={<Link href={`?page=${filter.page + 1}`} />} variant="outline" size="sm">Next</Button>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

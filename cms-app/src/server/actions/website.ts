@@ -30,6 +30,9 @@ export async function updateWebsiteAction(formData: FormData) {
   const user = await requireAuth();
   const parsed = updateWebsiteSchema.safeParse({
     id: formData.get("id"),
+    expectedVersion: formData.has("expectedVersion")
+      ? Number(formData.get("expectedVersion"))
+      : undefined,
     name: formData.get("name") || undefined,
     description: formData.get("description") || undefined,
     locale: formData.get("locale") || undefined,

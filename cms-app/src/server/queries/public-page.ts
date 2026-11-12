@@ -18,11 +18,15 @@ export const resolvePublishedPage = cache(
           ? { isHomepage: true }
           : { slug }),
       },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        seo: true,
         versions: {
           where: { isPublished: true },
           orderBy: { version: "desc" },
           take: 1,
+          select: { content: true },
         },
       },
     });

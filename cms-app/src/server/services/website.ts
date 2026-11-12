@@ -3,6 +3,7 @@ import { prisma } from "@/server/db/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import type { z } from "zod";
 import type { createWebsiteSchema, updateWebsiteSchema, websiteFilterSchema } from "@/lib/validations/website";
+import { makeWebsiteRevisionSnapshot } from "@/server/services/versioning";
 
 export async function createWebsite(data: z.infer<typeof createWebsiteSchema>) {
   const admin = await requireSuperAdmin();
@@ -17,30 +18,44 @@ export async function createWebsite(data: z.infer<typeof createWebsiteSchema>) {
     throw new Error("Website quota exceeded for this customer");
   }
 
-  const website = await prisma.website.create({
-    data: {
-      customerId: data.customerId,
-      name: data.name,
-      slug: data.slug,
-      description: data.description,
-      locale: data.locale,
-      timezone: data.timezone,
-      status: "DRAFT",
-      settings: { create: {} }, // default settings row
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const website = await tx.website.create({
+      data: {
+        customerId: data.customerId,
+        name: data.name,
+        slug: data.slug,
+        description: data.description,
+        locale: data.locale,
+        timezone: data.timezone,
+        status: "DRAFT",
+        version: 1,
+        settings: { create: {} },
+      },
+      include: { settings: true },
+    });
 
-  // Audit log assignment
-  await prisma.auditLog.create({
-    data: {
-      actorId: admin.id,
-      action: "website.create",
-      resource: `Website:${website.id}`,
-      metadata: { customerId: data.customerId, name: data.name },
-    },
-  });
+    await tx.contentVersion.create({
+      data: {
+        websiteId: website.id,
+        resourceType: "WEBSITE",
+        resourceId: website.id,
+        version: 1,
+        authorId: admin.id,
+        snapshot: makeWebsiteRevisionSnapshot(website, website.settings) as Prisma.InputJsonValue,
+        changeNote: "Initial website snapshot",
+      },
+    });
 
-  return website;
+    await tx.auditLog.create({
+      data: {
+        actorId: admin.id,
+        action: "website.create",
+        resource: `Website:${website.id}`,
+        metadata: { customerId: data.customerId, name: data.name },
+      },
+    });
+    return website;
+  });
 }
 
 export async function getWebsites(filter: z.infer<typeof websiteFilterSchema>, userId: string, role: string) {
@@ -112,14 +127,70 @@ export async function getWebsiteById(id: string, userId: string, role: string) {
 export async function updateWebsite(data: z.infer<typeof updateWebsiteSchema>, userId: string, role: string) {
   await requireWebsitePermission(userId, data.id, { resource: "website", action: "update" }, role);
 
-  return prisma.website.update({
+  const current = await prisma.website.findFirst({
     where: { id: data.id, deletedAt: null },
-    data: {
-      name: data.name,
-      description: data.description,
-      locale: data.locale,
-      timezone: data.timezone,
-    },
+    include: { settings: true },
+  });
+  if (!current) throw new Error("Website not found");
+  if (data.expectedVersion !== undefined && data.expectedVersion !== current.version) {
+    throw new Error("This website was updated elsewhere. Reload before saving again.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.website.updateMany({
+      where: { id: data.id, version: current.version, deletedAt: null },
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.locale !== undefined && { locale: data.locale }),
+        ...(data.timezone !== undefined && { timezone: data.timezone }),
+        version: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) throw new Error("This website was updated elsewhere. Reload before saving again.");
+
+    const existingSnapshot = await tx.contentVersion.findFirst({
+      where: { websiteId: data.id, resourceType: "WEBSITE", resourceId: data.id },
+      select: { id: true },
+    });
+    if (!existingSnapshot) {
+      await tx.contentVersion.create({
+        data: {
+          websiteId: data.id,
+          resourceType: "WEBSITE",
+          resourceId: data.id,
+          version: current.version,
+          authorId: userId,
+          snapshot: makeWebsiteRevisionSnapshot(current, current.settings) as Prisma.InputJsonValue,
+          changeNote: "Baseline snapshot",
+        },
+      });
+    }
+
+    const website = await tx.website.findUniqueOrThrow({
+      where: { id: data.id },
+      include: { settings: true },
+    });
+    await tx.contentVersion.create({
+      data: {
+        websiteId: data.id,
+        resourceType: "WEBSITE",
+        resourceId: data.id,
+        version: website.version,
+        authorId: userId,
+        snapshot: makeWebsiteRevisionSnapshot(website, website.settings) as Prisma.InputJsonValue,
+        changeNote: "Website updated",
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorId: userId,
+        action: "website.update",
+        resource: `Website:${data.id}`,
+        metadata: { version: website.version },
+      },
+    });
+    return website;
   });
 }
 

@@ -1,52 +1,45 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
-import { createWebsiteSchema } from "@/lib/validations/website";
-import { createWebsiteAction } from "@/server/actions/website";
+import Link from "next/link";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { prisma } from "@/server/db/prisma";
+import { requireSuperAdmin } from "@/server/authz";
+import { NewWebsiteForm } from "./new-website-form";
 
-export default function NewWebsitePage() {
-  const router = useRouter();
-  const form = useForm({
-    resolver: zodResolver(createWebsiteSchema),
-    defaultValues: { customerId: "", name: "", slug: "", description: "", locale: "en", timezone: "UTC" },
+export default async function NewWebsitePage() {
+  await requireSuperAdmin();
+  const customers = await prisma.customer.findMany({
+    where: { deletedAt: null },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, contactEmail: true, status: true },
   });
 
-  async function onSubmit(data: unknown) {
-    const formData = new FormData();
-    Object.entries(data as Record<string, unknown>).forEach(([k, v]) => formData.set(k, String(v ?? "")));
-    const result = await createWebsiteAction(formData);
-    if (result.error) toast.error(result.error);
-    else { toast.success("Website created"); router.push("/admin/websites"); }
-  }
-
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-lg space-y-4">
-      <h1 className="text-2xl font-bold">Create Website</h1>
-
+    <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Label htmlFor="customerId">Customer ID</Label>
-        <Input id="customerId" {...form.register("customerId")} />
-        {form.formState.errors.customerId && <p className="text-sm text-destructive">{form.formState.errors.customerId.message}</p>}
+        <h1 className="text-2xl font-bold tracking-tight">Create website</h1>
+        <p className="text-muted-foreground">Create a new site for a customer.</p>
       </div>
-
-      <div>
-        <Label htmlFor="name">Name</Label>
-        <Input id="name" {...form.register("name")} />
-      </div>
-
-      <div>
-        <Label htmlFor="slug">Slug</Label>
-        <Input id="slug" {...form.register("slug")} />
-        {form.formState.errors.slug && <p className="text-sm text-destructive">{form.formState.errors.slug.message}</p>}
-      </div>
-
-      <Button type="submit">Create</Button>
-    </form>
+      {customers.length === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>No customers available</CardTitle>
+            <CardDescription>Create a customer before creating a website.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button render={<Link href="/admin/customers/new" />}>Create customer</Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Website details</CardTitle>
+            <CardDescription>Choose an owner and configure the public site identity.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <NewWebsiteForm customers={customers} />
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }

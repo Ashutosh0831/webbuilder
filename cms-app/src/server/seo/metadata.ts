@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import type { Website, Page } from "@/generated/prisma/client";
 
 interface MetadataInput {
-  website: Website & { settings: { defaultSeo: unknown } | null };
-  page: Page;
+  website: Pick<Website, "name" | "locale"> & {
+    settings: { defaultSeo: unknown } | null;
+  };
+  page: Pick<Page, "title" | "seo">;
   domain: string;
   slug: string | null;
 }
@@ -29,6 +31,8 @@ export function generatePageMetadata({ website, page, domain, slug }: MetadataIn
 
   const ogTitle = pageSeo.ogTitle ?? title;
   const ogDescription = pageSeo.ogDescription ?? description;
+  const ogImage = pageSeo.ogImage;
+  const image = ogImage ? [{ url: ogImage, width: 1200, height: 630 }] : undefined;
 
   return {
     title: websiteDefaults.titleTemplate
@@ -44,13 +48,13 @@ export function generatePageMetadata({ website, page, domain, slug }: MetadataIn
       siteName: website.name,
       locale: website.locale,
       type: "website",
-      ...(pageSeo.ogImage && { images: [{ url: pageSeo.ogImage }] }),
+      ...(image && { images: image }),
     },
     twitter: {
       card: "summary_large_image",
       title: ogTitle,
       description: ogDescription,
-      ...(pageSeo.ogImage && { images: [pageSeo.ogImage] }),
+      ...(ogImage && { images: [ogImage] }),
     },
   };
 }

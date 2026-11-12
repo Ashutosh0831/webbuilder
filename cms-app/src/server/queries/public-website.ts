@@ -19,11 +19,15 @@ export const resolveWebsiteByDomain = cache(async (domain: string) => {
         },
       },
     },
-    include: {
-      settings: true,
+    select: {
+      id: true,
+      name: true,
+      locale: true,
+      slug: true,
+      settings: { select: { defaultSeo: true, robotsTxt: true } },
       themes: {
         where: { isActive: true },
-        include: { theme: true },
+        select: { theme: { select: { tokens: true } } },
         take: 1,
       },
     },

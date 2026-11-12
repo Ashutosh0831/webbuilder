@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useBuilderStore } from "../store";
@@ -7,9 +8,32 @@ import { BuilderToolbar } from "./builder-toolbar";
 import { ComponentPalette } from "./component-palette";
 import { Canvas } from "./canvas";
 import { PropertiesPanel } from "./properties-panel";
+import type { BuilderSection } from "../types";
 
-export function BuilderShell() {
+export function BuilderShell({
+  initial,
+}: {
+  initial?: {
+    websiteId: string;
+    pageId: string;
+    pageTitle: string;
+    version: number;
+    sections: BuilderSection[];
+  };
+}) {
   const { sections, reorderSections } = useBuilderStore();
+
+  useEffect(() => {
+    if (!initial) return;
+    useBuilderStore.setState({
+      ...initial,
+      selectedId: null,
+      device: "desktop",
+      saveStatus: "idle",
+      lastSavedAt: null,
+      autosaveTimer: null,
+    });
+  }, [initial]);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;

@@ -28,7 +28,7 @@ export default function LoginPage() {
       const res = await signIn.email({
         email: values.email,
         password: values.password,
-        callbackURL: "/dashboard",
+        callbackURL: "/admin",
       });
 
       if (res.error) {

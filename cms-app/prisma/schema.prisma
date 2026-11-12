@@ -55,6 +55,11 @@ enum PublicationStatus {
   FAILED
 }
 
+enum ContentResourceType {
+  WEBSITE
+  THEME
+}
+
 // ============ CUSTOMER ============
 
 model Customer {
@@ -107,6 +112,8 @@ model User {
   auditLogs           AuditLog[]
   pageVersions        PageVersion[]
   publicationRequests PublicationRequest[]
+  approvedPublicationRequests PublicationRequest[] @relation("ApprovedRequests")
+  contentVersions     ContentVersion[]
 
   @@index([customerId])
   @@index([status])
@@ -223,6 +230,7 @@ model Website {
   deletedAt   DateTime?
   description String?
   timezone    String        @default("UTC")
+  version     Int           @default(0)
 
   customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
   members      WebsiteMember[]
@@ -233,6 +241,7 @@ model Website {
   domains      WebsiteDomain[]
   settings     WebsiteSettings?
   publications Publication[]
+  contentVersions ContentVersion[]
 
   @@unique([customerId, slug])
   @@index([customerId])
@@ -270,6 +279,8 @@ model Page {
   updatedAt   DateTime   @updatedAt
   deletedAt   DateTime?
   version Int @default(0)  // incremented on every save
+  publishedVersionId String?   @db.Uuid
+  publishedVersion   PageVersion? @relation("PagePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: Restrict)
 
   website             Website              @relation(fields: [websiteId], references: [id], onDelete: Cascade)
   parent              Page?                @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
@@ -296,10 +307,16 @@ model PageVersion {
   content     Json
   changeNote  String?
   isPublished Boolean  @default(false)
+  publishedAt DateTime?
+  snapshot    Json?
+  publicationId String? @db.Uuid
   createdAt   DateTime @default(now())
 
   page   Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  publishedPages Page[] @relation("PagePublishedVersion")
   author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  publication Publication? @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  publicationRequests PublicationRequest[]
 
   @@unique([pageId, version])
   @@index([pageId])
@@ -342,6 +359,7 @@ model Theme {
   name      String
   tokens    Json
   isDefault Boolean  @default(false)
+  version   Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -445,6 +463,25 @@ model WebsiteSettings {
   website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
 }
 
+model ContentVersion {
+  id           String              @id @default(uuid()) @db.Uuid
+  websiteId    String              @db.Uuid
+  resourceType ContentResourceType
+  resourceId   String              @db.Uuid
+  version      Int
+  authorId     String?
+  snapshot     Json
+  changeNote   String?
+  createdAt    DateTime            @default(now())
+
+  website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([websiteId, resourceType, resourceId, version])
+  @@index([websiteId, resourceType, resourceId, version])
+  @@index([authorId])
+}
+
 // ============ PUBLICATION ============
 
 model Publication {
@@ -457,6 +494,7 @@ model Publication {
 
   website  Website              @relation(fields: [websiteId], references: [id], onDelete: Cascade)
   requests PublicationRequest[]
+  pageVersions PageVersion[]
 
   @@unique([websiteId, version])
   @@index([websiteId])
@@ -467,6 +505,7 @@ model PublicationRequest {
   id            String            @id @default(uuid()) @db.Uuid
   publicationId String            @db.Uuid
   pageId        String            @db.Uuid
+  pageVersionId String?           @db.Uuid
   requestedById String
   reviewedById  String?
   status        PublicationStatus @default(PENDING)
@@ -474,12 +513,16 @@ model PublicationRequest {
   createdAt     DateTime          @default(now())
   reviewedAt    DateTime?
 
+  approvedById String?
+  approvedBy   User?   @relation("ApprovedRequests", fields: [approvedById], references: [id], onDelete: SetNull)
   publication Publication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
   page        Page        @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  pageVersion PageVersion? @relation(fields: [pageVersionId], references: [id], onDelete: SetNull)
   requestedBy User        @relation(fields: [requestedById], references: [id], onDelete: Restrict)
 
   @@index([publicationId])
   @@index([pageId])
+  @@index([pageVersionId])
   @@index([status])
 }
 

@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { LayoutDashboard, Globe, FileText } from "lucide-react";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -9,17 +10,17 @@ export default function Home() {
         Modular monolith · Next.js App Router · Prisma · Better Auth
       </p>
       <div className="flex gap-4">
-        <Button>
+        <Button render={<Link href="/login" />}>
           <LayoutDashboard className="mr-2 h-4 w-4" />
-          Admin
+          Sign in
         </Button>
-        <Button variant="outline">
+        <Button variant="outline" render={<Link href="/dashboard" />}>
           <Globe className="mr-2 h-4 w-4" />
           Dashboard
         </Button>
-        <Button variant="secondary">
+        <Button variant="secondary" render={<Link href="/dashboard/pages" />}>
           <FileText className="mr-2 h-4 w-4" />
-          Builder
+          Manage Pages
         </Button>
       </div>
     </main>

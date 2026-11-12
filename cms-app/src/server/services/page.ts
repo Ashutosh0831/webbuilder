@@ -2,6 +2,9 @@ import { requireWebsitePermission, NotFoundError } from "@/server/authz";
 import { prisma } from "@/server/db/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import type { z } from "zod";
+import {
+  makePageRevisionSnapshot,
+} from "@/server/services/versioning";
 import type {
   createPageSchema, updatePageSchema, pageFilterSchema,
 } from "@/lib/validations/page";
@@ -33,6 +36,13 @@ export async function createPage(
           authorId: userId,
           version: 1,
           content: { sections: [] },
+          snapshot: {
+            title: data.title,
+            slug: data.slug,
+            seo: data.seo ?? null,
+            template: null,
+            parentId: data.parentId ?? null,
+          },
           isPublished: false,
           changeNote: "Initial draft",
         },
@@ -80,8 +90,8 @@ export async function getPageById(pageId: string, userId: string, role: string) 
     include: {
       versions: {
         orderBy: { version: "desc" },
-        take: 10,
-        select: { id: true, version: true, isPublished: true, createdAt: true, changeNote: true },
+        take: 50,
+        include: { author: { select: { id: true, name: true, email: true } } },
       },
       sections: { orderBy: { sortOrder: "asc" } },
     },
@@ -102,26 +112,8 @@ export async function updatePage(
   if (!page) throw new NotFoundError();
 
   await requireWebsitePermission(userId, page.websiteId, { resource: "page", action: "update" }, role);
-
-  // If content supplied, create a new draft version (do not mutate published)
-  if (data.content) {
-    const lastVersion = await prisma.pageVersion.findFirst({
-      where: { pageId: page.id },
-      orderBy: { version: "desc" },
-      select: { version: true },
-    });
-    const nextVersion = (lastVersion?.version ?? 0) + 1;
-
-    await prisma.pageVersion.create({
-      data: {
-        pageId: page.id,
-        authorId: userId,
-        version: nextVersion,
-        content: JSON.parse(JSON.stringify(data.content)) as Prisma.InputJsonValue,
-        isPublished: false,
-        changeNote: "Draft update",
-      },
-    });
+  if (data.expectedVersion !== undefined && data.expectedVersion !== page.version) {
+    throw new Error("This page was updated elsewhere. Reload before saving again.");
   }
 
   // Slug uniqueness within website
@@ -132,13 +124,37 @@ export async function updatePage(
     if (collision) throw new Error("A page with this slug already exists in this website");
   }
 
-  return prisma.page.update({
-    where: { id: page.id },
-    data: {
-      ...(data.title && { title: data.title }),
-      ...(data.slug && { slug: data.slug }),
-      ...(data.seo && { seo: data.seo }),
-    },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.page.updateMany({
+      where: { id: page.id, websiteId: page.websiteId, version: page.version, deletedAt: null },
+      data: {
+        ...(data.title !== undefined && { title: data.title }),
+        ...(data.slug !== undefined && { slug: data.slug }),
+        ...(data.seo !== undefined && { seo: data.seo }),
+        version: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) {
+      throw new Error("This page was updated elsewhere. Reload before saving again.");
+    }
+
+    const currentPage = await tx.page.findUniqueOrThrow({ where: { id: page.id } });
+    const latestVersion = await tx.pageVersion.findFirst({
+      where: { pageId: page.id },
+      orderBy: { version: "desc" },
+    });
+
+    return tx.pageVersion.create({
+      data: {
+        pageId: page.id,
+        authorId: userId,
+        version: (latestVersion?.version ?? 0) + 1,
+        content: JSON.parse(JSON.stringify(data.content ?? latestVersion?.content ?? { sections: [] })) as Prisma.InputJsonValue,
+        snapshot: makePageRevisionSnapshot(currentPage) as Prisma.InputJsonValue,
+        isPublished: false,
+        changeNote: "Page updated",
+      },
+    });
   });
 }
 
@@ -197,6 +213,13 @@ export async function duplicatePage(
           authorId: userId,
           version: 1,
           content: JSON.parse(JSON.stringify(content)) as Prisma.InputJsonValue,
+          snapshot: {
+            title: `${source.title} (Copy)`,
+            slug,
+            seo: source.seo ?? null,
+            template: source.template,
+            parentId: source.parentId,
+          },
           isPublished: false,
           changeNote: `Duplicated from ${source.slug}`,
         },

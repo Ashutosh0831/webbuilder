@@ -3,7 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { requireAuth } from "@/server/authz";
 import * as pageService from "@/server/services/page";
-import { createPageSchema, updatePageSchema, pageContentSchema } from "@/lib/validations/page";
+import { restorePageVersion } from "@/server/services/versioning";
+import {
+  createPageSchema,
+  restorePageVersionSchema,
+  updatePageSchema,
+  pageContentSchema,
+} from "@/lib/validations/page";
 
 export async function createPageAction(formData: FormData) {
   const user = await requireAuth();
@@ -30,6 +36,7 @@ export async function updatePageAction(formData: FormData) {
 
   const parsed = updatePageSchema.safeParse({
     id: formData.get("id"),
+    expectedVersion: Number(formData.get("expectedVersion")),
     title: formData.get("title") || undefined,
     slug: formData.get("slug") || undefined,
     content: content?.success ? content.data : undefined,
@@ -39,9 +46,27 @@ export async function updatePageAction(formData: FormData) {
   try {
     await pageService.updatePage(parsed.data, user.id, user.role ?? "");
     revalidatePath(`/dashboard/pages/${parsed.data.id}`);
-    return { success: true };
+    return { success: true, expectedVersion: parsed.data.expectedVersion + 1 };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to update page" };
+  }
+}
+
+export async function restorePageVersionAction(input: unknown) {
+  const parsed = restorePageVersionSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  try {
+    await restorePageVersion(
+      parsed.data.versionId,
+      parsed.data.pageId,
+      parsed.data.websiteId,
+      parsed.data.expectedVersion,
+    );
+    revalidatePath(`/dashboard/pages/${parsed.data.pageId}`);
+    return { success: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to restore page revision" };
   }
 }
 

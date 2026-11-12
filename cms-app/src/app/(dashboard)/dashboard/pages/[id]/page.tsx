@@ -19,8 +19,11 @@ export default async function EditPagePage({ params }: { params: Promise<{ id: s
 
   return (
     <PageEditor
+      key={page.version}
       page={{
         id: page.id,
+        websiteId: page.websiteId,
+        version: page.version,
         title: page.title,
         slug: page.slug,
         seo: page.seo,

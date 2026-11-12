@@ -47,7 +47,13 @@ export async function requireWebsitePermission(
           ? "page:edit"
           : permission.resource === "page" && permission.action === "delete"
             ? "page:delete"
-            : null;
+            : permission.resource === "publish" && permission.action === "submit"
+              ? "publish:submit"
+              : permission.resource === "publish" && permission.action === "approve"
+                ? "publish:approve"
+                : permission.resource === "domain" && permission.action === "manage"
+                  ? "domain:manage"
+                : null;
 
   const hasPermission = permissionCode !== null &&
     membership.role.permissions.some(({ permission: rolePermission }) =>

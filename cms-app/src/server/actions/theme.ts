@@ -6,7 +6,8 @@ export async function createThemeAction(
   websiteId: string,
   name: string,
   tokens: unknown,
+  expectedVersion?: number,
 ) {
-  await createThemeService(websiteId, name, tokens);
-  return { success: true };
+  const theme = await createThemeService(websiteId, name, tokens, expectedVersion);
+  return { success: true, version: theme.version };
 }

@@ -31,10 +31,6 @@ export default async function PagesPage({
     notFound();
   }
 
-  if (data.pages.length === 0 && !sp.search) {
-    return <EmptyState icon={FileText} title="No pages yet" description="Create your first page." />;
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -42,29 +38,42 @@ export default async function PagesPage({
           <h1 className="text-2xl font-bold">{website.name} — Pages</h1>
           <p className="text-sm text-muted-foreground">{data.total} total</p>
         </div>
-        <Button render={<Link href={`/dashboard/websites/${websiteId}/pages/new`}/>}>
-          New Page
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" render={<Link href={`/dashboard/websites/${websiteId}/history`}/>}>
+            Version History
+          </Button>
+          <Button render={<Link href={`/dashboard/websites/${websiteId}/pages/new`}/>}>
+            New Page
+          </Button>
+        </div>
       </div>
 
-      <ul className="divide-y rounded-md border">
-        {data.pages.map((page) => (
-          <li key={page.id} className="flex items-center justify-between p-4">
-            <div>
-              <Link href={`/dashboard/pages/${page.id}`} className="font-medium hover:underline">
-                {page.title}
-              </Link>
-              <p className="text-sm text-muted-foreground">
-                /{page.slug} · {page._count.versions} versions
-                {page.isHomepage && " · Homepage"}
-              </p>
-            </div>
-            <Badge variant={page.status === "PUBLISHED" ? "default" : "secondary"}>
-              {page.status}
-            </Badge>
-          </li>
-        ))}
-      </ul>
+      {data.pages.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title={sp.search ? "No matching pages" : "No pages yet"}
+          description={sp.search ? "Try a different search." : "Create your first page."}
+        />
+      ) : (
+        <ul className="divide-y rounded-md border">
+          {data.pages.map((page) => (
+            <li key={page.id} className="flex items-center justify-between p-4">
+              <div>
+                <Link href={`/dashboard/pages/${page.id}`} className="font-medium hover:underline">
+                  {page.title}
+                </Link>
+                <p className="text-sm text-muted-foreground">
+                  /{page.slug} · {page._count.versions} versions
+                  {page.isHomepage && " · Homepage"}
+                </p>
+              </div>
+              <Badge variant={page.status === "PUBLISHED" ? "default" : "secondary"}>
+                {page.status}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="flex justify-end gap-2">
         {data.pages.length > 0 && (

@@ -50,11 +50,22 @@ export default async function PublicPage({ params }: PageProps) {
   const parsed = themeTokensSchema.safeParse(theme?.tokens ?? {});
   const tokens = parsed.success ? parsed.data : defaultTokens;
   const themeCss = generateThemeCssForWebsite(tokens, website.id).replace(/</g, "\\3c ");
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: website.name,
+    url: `https://${domain}`,
+  };
+  const serializedJsonLd = JSON.stringify(jsonLd).replace(/</g, "\\u003c");
 
   return (
     <html lang={website.locale}>
       <head>
         <style dangerouslySetInnerHTML={{ __html: themeCss }} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializedJsonLd }}
+        />
       </head>
       <body data-theme={website.id}>
         <main>{nodes}</main>

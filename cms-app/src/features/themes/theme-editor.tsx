@@ -9,9 +9,18 @@ import { ThemePreview } from "./theme-preview";
 import { createThemeAction } from "@/server/actions/theme";
 import type { ThemeTokens } from "@/lib/validations/themes";
 
-export function ThemeEditor({ websiteId, initial }: { websiteId: string; initial: ThemeTokens }) {
+export function ThemeEditor({
+  websiteId,
+  initial,
+  themeVersion,
+}: {
+  websiteId: string;
+  initial: ThemeTokens;
+  themeVersion?: number;
+}) {
   const [tokens, setTokens] = useState<ThemeTokens>(initial);
   const [saving, setSaving] = useState(false);
+  const [currentVersion, setCurrentVersion] = useState(themeVersion);
 
   function setNested(path: string, value: string) {
     const [group, key] = path.split(".");
@@ -31,7 +40,8 @@ export function ThemeEditor({ websiteId, initial }: { websiteId: string; initial
   async function handleSave() {
     setSaving(true);
     try {
-      await createThemeAction(websiteId, "Custom Theme", tokens);
+      const result = await createThemeAction(websiteId, "Custom Theme", tokens, currentVersion);
+      setCurrentVersion(result.version);
       toast.success("Theme saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to save theme");

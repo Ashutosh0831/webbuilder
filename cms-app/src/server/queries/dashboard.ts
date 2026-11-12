@@ -1,5 +1,33 @@
 import { requireSuperAdmin } from "@/server/authz";
 import { prisma } from "@/server/db/prisma";
+import { Prisma } from "@/generated/prisma/client";
+
+export async function getWorkspaceDashboard(userId: string, role: string) {
+  const websiteScope: Prisma.WebsiteWhereInput = {
+    deletedAt: null,
+    ...(role === "super_admin" ? {} : { members: { some: { userId } } }),
+  };
+
+  const [websites, pages, media, teamMembers, activity] = await Promise.all([
+    prisma.website.count({ where: websiteScope }),
+    prisma.page.count({ where: { deletedAt: null, website: websiteScope } }),
+    prisma.media.count({ where: { deletedAt: null, website: websiteScope } }),
+    prisma.user.count({
+      where: {
+        deletedAt: null,
+        websiteMembers: { some: { website: websiteScope } },
+      },
+    }),
+    prisma.auditLog.findMany({
+      where: { actorId: userId },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: { id: true, action: true, resource: true, createdAt: true },
+    }),
+  ]);
+
+  return { websites, pages, media, teamMembers, activity };
+}
 
 export async function getDashboardMetrics() {
   await requireSuperAdmin();

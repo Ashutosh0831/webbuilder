@@ -39,10 +39,18 @@ export const createPageSchema = z.object({
 
 export const updatePageSchema = z.object({
   id: z.string().uuid(),
+  expectedVersion: z.number().int().min(0),
   title: z.string().min(1).max(200).optional(),
   slug: pageSlugSchema.optional(),
   seo: pageSeoSchema.optional(),
   content: pageContentSchema.optional(),
+});
+
+export const restorePageVersionSchema = z.object({
+  pageId: z.string().uuid(),
+  versionId: z.string().uuid(),
+  websiteId: z.string().uuid(),
+  expectedVersion: z.number().int().min(0),
 });
 
 export const pageFilterSchema = z.object({

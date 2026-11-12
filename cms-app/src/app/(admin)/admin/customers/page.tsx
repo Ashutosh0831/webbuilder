@@ -15,16 +15,6 @@ export default async function CustomersPage({
   const filter = customerFilterSchema.parse(params);
   const { customers, totalPages } = await getCustomers(filter);
 
-  if (customers.length === 0 && !filter.search) {
-    return (
-      <EmptyState
-        icon={Users}
-        title="No customers yet"
-        description="Create your first customer to get started."
-      />
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -39,30 +29,38 @@ export default async function CustomersPage({
           <CardTitle>All Customers ({customers.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <ul className="divide-y">
-            {customers.map((c) => (
-              <li key={c.id} className="flex items-center justify-between py-3">
-                <div>
-                  <Link
-                    href={`/admin/customers/${c.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {c.name}
-                  </Link>
-                  <p className="text-sm text-muted-foreground">
-                    {c.contactEmail} · {c._count.websites} websites · {c._count.users} users
-                  </p>
-                </div>
-                <span className="text-xs rounded-full px-2 py-1 bg-muted">
-                  {c.status}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {customers.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title={filter.search ? "No matching customers" : "No customers yet"}
+              description={filter.search ? "Try a different search." : "Create your first customer to get started."}
+            />
+          ) : (
+            <ul className="divide-y">
+              {customers.map((c) => (
+                <li key={c.id} className="flex items-center justify-between py-3">
+                  <div>
+                    <Link
+                      href={`/admin/customers/${c.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {c.name}
+                    </Link>
+                    <p className="text-sm text-muted-foreground">
+                      {c.contactEmail} · {c._count.websites} websites · {c._count.users} users
+                    </p>
+                  </div>
+                  <span className="text-xs rounded-full px-2 py-1 bg-muted">
+                    {c.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
-      <div className="flex justify-end gap-2">
+      {totalPages > 1 && <div className="flex justify-end gap-2">
         {filter.page > 1 && (
           <Button render={<Link href={`?page=${filter.page - 1}`} />} variant="outline" size="sm">
             Previous
@@ -76,7 +74,7 @@ export default async function CustomersPage({
             Next
           </Button>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
