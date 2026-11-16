@@ -23,6 +23,9 @@ importers:
       '@cms/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@cms/resolver':
+        specifier: workspace:^
+        version: link:../../packages/resolver
       '@cms/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -82,6 +85,12 @@ importers:
       drizzle-kit:
         specifier: ^0.21.0
         version: 0.21.4
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/resolver:
+    devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3

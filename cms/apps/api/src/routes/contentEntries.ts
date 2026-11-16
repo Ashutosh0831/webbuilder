@@ -7,9 +7,16 @@ import {
   contentTypes,
   contentEntries,
   contentRevisions,
+  siteSettings as siteSettingsTable,
+  templates,
 } from "@cms/db";
 import { requireSuperAdmin, requireApiKey } from "../middleware/auth.js";
 import { Errors } from "../lib/errors.js";
+import {
+  interpolateDeep,
+  resolveSeo,
+  type InterpolationContext,
+} from "@cms/resolver";
 
 const createEntrySchema = z.object({
   contentTypeId: z.string().uuid(),
@@ -34,10 +41,30 @@ const updateEntrySchema = z.object({
   expectedVersion: z.number().int().positive(),
 });
 
+async function buildResolveContext(
+  siteId: string,
+  entry: { data: unknown }
+): Promise<InterpolationContext> {
+  const siteSettingsRows = await db
+    .select({ key: siteSettingsTable.key, value: siteSettingsTable.value })
+    .from(siteSettingsTable)
+    .where(eq(siteSettingsTable.siteId, siteId));
+
+  const siteSettings: Record<string, unknown> = {};
+  for (const row of siteSettingsRows) {
+    siteSettings[row.key] = row.value;
+  }
+
+  return {
+    entry: entry.data as Record<string, unknown>,
+    siteSettings,
+    globalSettings: {},
+  };
+}
+
 export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
   // ─── ADMIN ROUTES (JWT auth) ──────────────────────────────
 
-  // Create draft entry
   app.post(
     "/api/admin/sites/:siteId/content",
     { preHandler: requireSuperAdmin },
@@ -65,30 +92,39 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
         throw Errors.badRequest("Content type does not belong to this site");
       }
 
-      const [created] = await db
-        .insert(contentEntries)
-        .values({
-          siteId,
-          contentTypeId: parsed.data.contentTypeId,
-          locale: parsed.data.locale ?? "en",
-          slug: parsed.data.slug,
-          data: parsed.data.data,
-          status: "draft",
-          seoTitle: parsed.data.seoTitle,
-          seoDescription: parsed.data.seoDescription,
-          seoCanonical: parsed.data.seoCanonical,
-          seoOgImage: parsed.data.seoOgImage,
-          seoRobots: parsed.data.seoRobots,
-          createdBy: req.user!.sub,
-          updatedBy: req.user!.sub,
-        })
-        .returning();
+      try {
+        const [created] = await db
+          .insert(contentEntries)
+          .values({
+            siteId,
+            contentTypeId: parsed.data.contentTypeId,
+            locale: parsed.data.locale ?? "en",
+            slug: parsed.data.slug,
+            data: parsed.data.data,
+            status: "draft",
+            seoTitle: parsed.data.seoTitle,
+            seoDescription: parsed.data.seoDescription,
+            seoCanonical: parsed.data.seoCanonical,
+            seoOgImage: parsed.data.seoOgImage,
+            seoRobots: parsed.data.seoRobots,
+            createdBy: req.user!.sub,
+            updatedBy: req.user!.sub,
+          })
+          .returning();
 
-      return { entry: created };
+        return { entry: created };
+      } catch (err: any) {
+        // Postgres unique violation → clean 409
+        if (err?.code === "23505") {
+          throw Errors.conflict(
+            `Entry with slug '${parsed.data.slug}' already exists for this content type`
+          );
+        }
+        throw err;
+      }
     }
   );
 
-  // Update entry (draft or published) with optimistic locking
   app.put(
     "/api/admin/content/:id",
     { preHandler: requireSuperAdmin },
@@ -114,7 +150,6 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
 
       const nextVersion = existing.version + 1;
 
-      // Snapshot old state into revisions
       await db.insert(contentRevisions).values({
         entryId: id,
         version: existing.version,
@@ -158,7 +193,6 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // Publish
   app.post(
     "/api/admin/content/:id/publish",
     { preHandler: requireSuperAdmin },
@@ -185,7 +219,6 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // Unpublish (back to draft)
   app.post(
     "/api/admin/content/:id/unpublish",
     { preHandler: requireSuperAdmin },
@@ -201,7 +234,6 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // Delete
   app.delete(
     "/api/admin/content/:id",
     { preHandler: requireSuperAdmin },
@@ -216,7 +248,6 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // List all entries for a site (admin view — includes drafts)
   app.get(
     "/api/admin/sites/:siteId/content",
     { preHandler: requireSuperAdmin },
@@ -241,9 +272,8 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // ─── PUBLIC READ ROUTES (API key auth, published only) ────
+  // ─── PUBLIC READ ROUTES (API key auth, published only, RESOLVED) ──
 
-  // List published entries of a type for a site
   app.get(
     "/api/v1/sites/:siteSlug/content/:typeKey",
     { preHandler: requireApiKey("read") },
@@ -285,11 +315,18 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
         )
         .orderBy(desc(contentEntries.publishedAt));
 
-      return { entries: rows };
+      const resolved = await Promise.all(
+        rows.map(async (entry) => {
+          const ctx = await buildResolveContext(site.id, entry);
+          const { resolved: data } = interpolateDeep(entry.data, ctx);
+          return { ...entry, data };
+        })
+      );
+
+      return { entries: resolved };
     }
   );
 
-  // Get single published entry by slug
   app.get(
     "/api/v1/sites/:siteSlug/content/:typeKey/:slug",
     { preHandler: requireApiKey("read") },
@@ -334,7 +371,44 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
         .limit(1);
       if (!entry) throw Errors.notFound("Entry not found or not published");
 
-      return { entry };
+      const ctx = await buildResolveContext(site.id, entry);
+      const { resolved: data, missing } = interpolateDeep(entry.data, ctx);
+
+      const [seoTemplate] = await db
+        .select()
+        .from(templates)
+        .where(
+          and(
+            eq(templates.siteId, site.id),
+            eq(templates.appliesTo, typeKey)
+          )
+        )
+        .limit(1);
+
+      const seo = resolveSeo({
+        manual: {
+          title: entry.seoTitle,
+          description: entry.seoDescription,
+          canonical: entry.seoCanonical,
+          ogImage: entry.seoOgImage,
+          robots: entry.seoRobots,
+        },
+        template: seoTemplate
+          ? {
+              titleTemplate: `${(seoTemplate.variableMap as any)?.titleTemplate ?? ""}`,
+              descriptionTemplate: `${(seoTemplate.variableMap as any)?.descriptionTemplate ?? ""}`,
+            }
+          : null,
+        siteDefaults: {},
+        ctx,
+        canonicalUrl: entry.seoCanonical ?? "",
+      });
+
+      return {
+        entry: { ...entry, data },
+        seo,
+        missingPlaceholders: missing.length > 0 ? missing : undefined,
+      };
     }
   );
 }

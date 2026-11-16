@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@cms/db": "workspace:*",
+    "@cms/resolver": "workspace:^",
     "@cms/shared": "workspace:*",
     "@fastify/cors": "^9.0.0",
     "argon2": "^0.45.2",

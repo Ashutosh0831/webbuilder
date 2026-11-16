@@ -9,10 +9,11 @@ import { siteRoutes } from "./routes/sites.js";
 import { contentTypeRoutes } from "./routes/contentTypes.js";
 import { contentEntryRoutes } from "./routes/contentEntries.js";
 import { ApiError } from "./lib/errors.js";
-
+import { siteSettingsRoutes } from "./routes/siteSettings.js";
 const app = Fastify({ logger: true });
 
 await app.register(cors, { origin: true });
+await app.register(siteSettingsRoutes);
 
 app.setErrorHandler((err, _req, reply) => {
   if (err instanceof ApiError) {
