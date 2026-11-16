@@ -19,7 +19,6 @@ import {
   type InterpolationContext,
 } from "@cms/resolver";
 
-// Unwrap double-serialized data if it happens
 function normalizeJsonb(value: unknown): unknown {
   if (typeof value === "string") {
     try {
@@ -76,8 +75,6 @@ async function buildResolveContext(
 }
 
 export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
-  // ─── ADMIN ──────────────────────────────
-
   app.post(
     "/api/admin/sites/:siteId/content",
     { preHandler: requireSuperAdmin },
@@ -278,8 +275,6 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // ─── PUBLIC READ (resolved + relations) ──────────
-
   app.get(
     "/api/v1/sites/:siteSlug/content/:typeKey",
     { preHandler: requireApiKey("read") },
@@ -382,7 +377,6 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
         ctx
       );
 
-      // Hydrate relations
       const relationRows = await db
         .select({
           relationType: contentRelations.relationType,

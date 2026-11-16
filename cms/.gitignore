@@ -8,3 +8,7 @@ build/
 generated/
 .turbo/
 coverage/
+
+node_modules/
+.next/
+.env.local

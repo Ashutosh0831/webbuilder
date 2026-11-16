@@ -5,6 +5,17 @@ import { db, sites, forms, formSubmissions, events } from "@cms/db";
 import { requireSuperAdmin, requireApiKey } from "../middleware/auth.js";
 import { Errors } from "../lib/errors.js";
 
+function normalizeJsonb(value: unknown): unknown {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
 const createFormSchema = z.object({
   key: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/),
   name: z.string().min(1).max(100),
@@ -23,7 +34,8 @@ const createFormSchema = z.object({
 });
 
 export async function formRoutes(app: FastifyInstance): Promise<void> {
-  // Admin: create form
+  // ─── ADMIN ──────────────────────────────
+
   app.post(
     "/api/admin/sites/:siteId/forms",
     { preHandler: requireSuperAdmin },
@@ -63,7 +75,6 @@ export async function formRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // Admin: list submissions
   app.get(
     "/api/admin/sites/:siteId/submissions",
     { preHandler: requireSuperAdmin },
@@ -88,7 +99,38 @@ export async function formRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // Public: get form schema
+  // ─── PUBLIC ──────────────────────────────
+
+  // List all forms for a site
+  app.get(
+    "/api/v1/sites/:siteSlug/forms",
+    { preHandler: requireApiKey("read") },
+    async (req) => {
+      const { siteSlug } = req.params as { siteSlug: string };
+      const [site] = await db
+        .select({ id: sites.id })
+        .from(sites)
+        .where(eq(sites.siteSlug, siteSlug))
+        .limit(1);
+      if (!site) throw Errors.notFound("Site not found");
+      if (req.siteScope?.siteId !== site.id) {
+        throw Errors.forbidden("API key not valid for this site");
+      }
+      const rows = await db
+        .select()
+        .from(forms)
+        .where(eq(forms.siteId, site.id));
+      return {
+        forms: rows.map((f) => ({
+          key: f.key,
+          name: f.name,
+          schema: f.schema,
+        })),
+      };
+    }
+  );
+
+  // Get a single form schema by key
   app.get(
     "/api/v1/sites/:siteSlug/forms/:key",
     { preHandler: requireApiKey("read") },
@@ -116,7 +158,7 @@ export async function formRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // Public: submit form (read key required + honeypot)
+  // Submit a form (honeypot-based spam protection)
   app.post(
     "/api/v1/sites/:siteSlug/forms/:key/submit",
     { preHandler: requireApiKey("read") },
@@ -146,7 +188,6 @@ export async function formRoutes(app: FastifyInstance): Promise<void> {
         throw Errors.badRequest("Invalid submission");
       }
 
-      // Honeypot: if "_hp" field has any value, silently accept but mark as spam
       const isSpam = Boolean((body as any)._hp);
 
       const [created] = await db
@@ -154,7 +195,7 @@ export async function formRoutes(app: FastifyInstance): Promise<void> {
         .values({
           siteId: site.id,
           formId: form.id,
-          data: body,
+          data: normalizeJsonb(body) as Record<string, unknown>,
           ip: req.ip,
           userAgent: req.headers["user-agent"] ?? null,
           status: isSpam ? "spam" : "new",

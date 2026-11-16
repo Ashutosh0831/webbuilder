@@ -1,0 +1,21 @@
+{
+  "name": "@cms/generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "cms-generate": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- tsx src/cli.ts",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^7.4.0",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.0"
+  }
+}

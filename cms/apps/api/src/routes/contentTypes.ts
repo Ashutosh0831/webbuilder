@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { db, sites, contentTypes } from "@cms/db";
-import { requireSuperAdmin } from "../middleware/auth.js";
+import { requireSuperAdmin, requireApiKey } from "../middleware/auth.js";
 import { Errors } from "../lib/errors.js";
 
 const fieldSchemaZ = z.object({
@@ -40,7 +40,6 @@ const createContentTypeSchema = z.object({
 });
 
 export async function contentTypeRoutes(app: FastifyInstance): Promise<void> {
-  // Create a content type for a specific site
   app.post(
     "/api/admin/sites/:siteId/content-types",
     { preHandler: requireSuperAdmin },
@@ -58,16 +57,20 @@ export async function contentTypeRoutes(app: FastifyInstance): Promise<void> {
         .limit(1);
       if (siteRow.length === 0) throw Errors.notFound("Site not found");
 
-      // Check for duplicate key per site
       const existing = await db
         .select({ id: contentTypes.id })
         .from(contentTypes)
         .where(
-          and(eq(contentTypes.siteId, siteId), eq(contentTypes.key, parsed.data.key))
+          and(
+            eq(contentTypes.siteId, siteId),
+            eq(contentTypes.key, parsed.data.key)
+          )
         )
         .limit(1);
       if (existing.length > 0) {
-        throw Errors.conflict(`Content type '${parsed.data.key}' already exists for this site`);
+        throw Errors.conflict(
+          `Content type '${parsed.data.key}' already exists for this site`
+        );
       }
 
       const [created] = await db
@@ -86,7 +89,6 @@ export async function contentTypeRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // List content types for a site
   app.get(
     "/api/admin/sites/:siteId/content-types",
     { preHandler: requireSuperAdmin },
@@ -100,7 +102,6 @@ export async function contentTypeRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // Get one content type
   app.get(
     "/api/admin/content-types/:id",
     { preHandler: requireSuperAdmin },
@@ -113,6 +114,28 @@ export async function contentTypeRoutes(app: FastifyInstance): Promise<void> {
         .limit(1);
       if (!row) throw Errors.notFound("Content type not found");
       return { contentType: row };
+    }
+  );
+
+  app.get(
+    "/api/v1/sites/:siteSlug/content-types",
+    { preHandler: requireApiKey("read") },
+    async (req) => {
+      const { siteSlug } = req.params as { siteSlug: string };
+      const [site] = await db
+        .select({ id: sites.id })
+        .from(sites)
+        .where(eq(sites.siteSlug, siteSlug))
+        .limit(1);
+      if (!site) throw Errors.notFound("Site not found");
+      if (req.siteScope?.siteId !== site.id) {
+        throw Errors.forbidden("API key not valid for this site");
+      }
+      const rows = await db
+        .select()
+        .from(contentTypes)
+        .where(eq(contentTypes.siteId, site.id));
+      return { contentTypes: rows };
     }
   );
 }
