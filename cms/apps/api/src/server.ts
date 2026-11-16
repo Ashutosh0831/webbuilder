@@ -7,6 +7,7 @@ import { authRoutes } from "./routes/auth.js";
 import { clientRoutes } from "./routes/clients.js";
 import { siteRoutes } from "./routes/sites.js";
 import { contentTypeRoutes } from "./routes/contentTypes.js";
+import { contentEntryRoutes } from "./routes/contentEntries.js";
 import { ApiError } from "./lib/errors.js";
 
 const app = Fastify({ logger: true });
@@ -51,6 +52,7 @@ await app.register(authRoutes);
 await app.register(clientRoutes);
 await app.register(siteRoutes);
 await app.register(contentTypeRoutes);
+await app.register(contentEntryRoutes);
 
 const port = Number(process.env.API_PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });
