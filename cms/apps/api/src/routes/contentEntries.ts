@@ -7,6 +7,7 @@ import {
   contentTypes,
   contentEntries,
   contentRevisions,
+  contentRelations,
   siteSettings as siteSettingsTable,
   templates,
 } from "@cms/db";
@@ -17,6 +18,18 @@ import {
   resolveSeo,
   type InterpolationContext,
 } from "@cms/resolver";
+
+// Unwrap double-serialized data if it happens
+function normalizeJsonb(value: unknown): unknown {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
 
 const createEntrySchema = z.object({
   contentTypeId: z.string().uuid(),
@@ -56,14 +69,14 @@ async function buildResolveContext(
   }
 
   return {
-    entry: entry.data as Record<string, unknown>,
+    entry: normalizeJsonb(entry.data) as Record<string, unknown>,
     siteSettings,
     globalSettings: {},
   };
 }
 
 export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
-  // ─── ADMIN ROUTES (JWT auth) ──────────────────────────────
+  // ─── ADMIN ──────────────────────────────
 
   app.post(
     "/api/admin/sites/:siteId/content",
@@ -100,7 +113,7 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
             contentTypeId: parsed.data.contentTypeId,
             locale: parsed.data.locale ?? "en",
             slug: parsed.data.slug,
-            data: parsed.data.data,
+            data: normalizeJsonb(parsed.data.data) as Record<string, unknown>,
             status: "draft",
             seoTitle: parsed.data.seoTitle,
             seoDescription: parsed.data.seoDescription,
@@ -114,7 +127,6 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
 
         return { entry: created };
       } catch (err: any) {
-        // Postgres unique violation → clean 409
         if (err?.code === "23505") {
           throw Errors.conflict(
             `Entry with slug '${parsed.data.slug}' already exists for this content type`
@@ -171,7 +183,8 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
         updatedAt: new Date(),
       };
       if (parsed.data.slug !== undefined) updateFields.slug = parsed.data.slug;
-      if (parsed.data.data !== undefined) updateFields.data = parsed.data.data;
+      if (parsed.data.data !== undefined)
+        updateFields.data = normalizeJsonb(parsed.data.data);
       if (parsed.data.seoTitle !== undefined)
         updateFields.seoTitle = parsed.data.seoTitle;
       if (parsed.data.seoDescription !== undefined)
@@ -198,13 +211,6 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: requireSuperAdmin },
     async (req) => {
       const { id } = req.params as { id: string };
-      const [existing] = await db
-        .select()
-        .from(contentEntries)
-        .where(eq(contentEntries.id, id))
-        .limit(1);
-      if (!existing) throw Errors.notFound("Entry not found");
-
       const [updated] = await db
         .update(contentEntries)
         .set({
@@ -214,7 +220,7 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
         })
         .where(eq(contentEntries.id, id))
         .returning();
-
+      if (!updated) throw Errors.notFound("Entry not found");
       return { entry: updated };
     }
   );
@@ -253,7 +259,7 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: requireSuperAdmin },
     async (req) => {
       const { siteId } = req.params as { siteId: string };
-      const q = req.query as { typeId?: string; status?: string };
+      const q = req.query as { typeId?: string };
       let query = db
         .select()
         .from(contentEntries)
@@ -272,7 +278,7 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // ─── PUBLIC READ ROUTES (API key auth, published only, RESOLVED) ──
+  // ─── PUBLIC READ (resolved + relations) ──────────
 
   app.get(
     "/api/v1/sites/:siteSlug/content/:typeKey",
@@ -289,10 +295,8 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(sites.siteSlug, siteSlug))
         .limit(1);
       if (!site) throw Errors.notFound("Site not found");
-
-      if (req.siteScope?.siteId !== site.id) {
+      if (req.siteScope?.siteId !== site.id)
         throw Errors.forbidden("API key not valid for this site");
-      }
 
       const [ct] = await db
         .select({ id: contentTypes.id })
@@ -318,7 +322,10 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
       const resolved = await Promise.all(
         rows.map(async (entry) => {
           const ctx = await buildResolveContext(site.id, entry);
-          const { resolved: data } = interpolateDeep(entry.data, ctx);
+          const { resolved: data } = interpolateDeep(
+            normalizeJsonb(entry.data),
+            ctx
+          );
           return { ...entry, data };
         })
       );
@@ -343,10 +350,8 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(sites.siteSlug, siteSlug))
         .limit(1);
       if (!site) throw Errors.notFound("Site not found");
-
-      if (req.siteScope?.siteId !== site.id) {
+      if (req.siteScope?.siteId !== site.id)
         throw Errors.forbidden("API key not valid for this site");
-      }
 
       const [ct] = await db
         .select({ id: contentTypes.id })
@@ -372,16 +377,53 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
       if (!entry) throw Errors.notFound("Entry not found or not published");
 
       const ctx = await buildResolveContext(site.id, entry);
-      const { resolved: data, missing } = interpolateDeep(entry.data, ctx);
+      const { resolved: data, missing } = interpolateDeep(
+        normalizeJsonb(entry.data),
+        ctx
+      );
+
+      // Hydrate relations
+      const relationRows = await db
+        .select({
+          relationType: contentRelations.relationType,
+          position: contentRelations.position,
+          id: contentEntries.id,
+          slug: contentEntries.slug,
+          data: contentEntries.data,
+        })
+        .from(contentRelations)
+        .innerJoin(
+          contentEntries,
+          eq(contentEntries.id, contentRelations.toEntryId)
+        )
+        .where(
+          and(
+            eq(contentRelations.fromEntryId, entry.id),
+            eq(contentEntries.status, "published")
+          )
+        );
+
+      const relations: Record<string, unknown[]> = {};
+      for (const rel of relationRows) {
+        const relCtx = await buildResolveContext(site.id, {
+          data: rel.data,
+        });
+        const { resolved: relData } = interpolateDeep(
+          normalizeJsonb(rel.data),
+          relCtx
+        );
+        (relations[rel.relationType] ??= []).push({
+          id: rel.id,
+          slug: rel.slug,
+          data: relData,
+        });
+      }
 
       const [seoTemplate] = await db
         .select()
         .from(templates)
         .where(
-          and(
-            eq(templates.siteId, site.id),
-            eq(templates.appliesTo, typeKey)
-          )
+          and(eq(templates.siteId, site.id), eq(templates.appliesTo, typeKey))
         )
         .limit(1);
 
@@ -407,6 +449,7 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
       return {
         entry: { ...entry, data },
         seo,
+        relations,
         missingPlaceholders: missing.length > 0 ? missing : undefined,
       };
     }

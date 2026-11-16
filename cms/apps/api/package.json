@@ -9,10 +9,13 @@
     "start": "dotenv -e ../../.env -- node dist/server.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1169.0",
+    "@aws-sdk/s3-request-presigner": "^3.1169.0",
     "@cms/db": "workspace:*",
     "@cms/resolver": "workspace:^",
     "@cms/shared": "workspace:*",
     "@fastify/cors": "^9.0.0",
+    "@fastify/multipart": "^8.3.0",
     "argon2": "^0.45.2",
     "dotenv": "^16.4.0",
     "drizzle-orm": "^0.30.0",
