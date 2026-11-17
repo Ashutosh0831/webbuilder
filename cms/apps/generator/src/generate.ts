@@ -10,75 +10,13 @@ export interface GenerateOptions {
   apiBaseUrl: string;
 }
 
-interface SiteBundle {
-  site: { id: string; name: string; siteSlug: string; defaultLocale: string };
-  settings: Record<string, unknown>;
-  contentTypes: any[];
-  entriesByType: Record<string, any[]>;
-  menus: Record<string, any>;
-  forms: any[];
-  theme: { base: string; tokens: Record<string, string> };
-}
-
-async function fetchSiteBundle(
-  apiBaseUrl: string,
-  siteSlug: string,
-  readKey: string
-): Promise<SiteBundle> {
-  const h = { "X-API-Key": readKey };
-
-  const fetchJson = async (url: string) => {
-    const res = await fetch(url, { headers: h });
-    if (!res.ok) {
-      throw new Error(`${url} → ${res.status}: ${await res.text()}`);
-    }
-    return res.json();
-  };
-
-  // Fetch settings via a stub if admin-only — for now, generate defaults from DB
-  // Real settings endpoint is admin-only; use the DB for generation-time settings
-  // For Batch 8, settings will come from a helper file generated at request time
-  const site = { id: "", name: "", siteSlug, defaultLocale: "en" };
-
-  const typesRes = await fetchJson(
-    `${apiBaseUrl}/api/v1/sites/${siteSlug}/content-types`
-  );
-  const contentTypes = typesRes.contentTypes;
-
-  const entriesByType: Record<string, any[]> = {};
-  for (const ct of contentTypes) {
-    try {
-      const listRes = await fetchJson(
-        `${apiBaseUrl}/api/v1/sites/${siteSlug}/content/${ct.key}`
-      );
-      entriesByType[ct.key] = listRes.entries;
-    } catch {
-      entriesByType[ct.key] = [];
-    }
+async function fetchJson(url: string, key: string) {
+  const res = await fetch(url, { headers: { "X-API-Key": key } });
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    throw new Error(`${url} → ${res.status}: ${await res.text()}`);
   }
-
-  const menus: Record<string, any> = {};
-  try {
-    menus.header = await fetchJson(
-      `${apiBaseUrl}/api/v1/sites/${siteSlug}/menus/header`
-    );
-  } catch {
-    menus.header = { menu: { items: [] } };
-  }
-
-  const formsRes = await fetchJson(
-    `${apiBaseUrl}/api/v1/sites/${siteSlug}/forms`
-  ).catch(() => ({ forms: [] }));
-
-  return {
-    site,
-    settings: {},
-    contentTypes,
-    entriesByType,
-    menus,
-    forms: formsRes.forms ?? [],
-    theme: { base: "professional-blue", tokens: {} },
-  };
+  return res.json();
 }
 
 export async function generate(opts: GenerateOptions): Promise<void> {
@@ -89,8 +27,14 @@ export async function generate(opts: GenerateOptions): Promise<void> {
     );
   }
 
-  console.log(`[generator] fetching bundle for site "${opts.siteSlug}"...`);
-  const bundle = await fetchSiteBundle(opts.apiBaseUrl, opts.siteSlug, readKey);
+  console.log(`[generator] fetching data for site "${opts.siteSlug}"...`);
+
+  // Fetch the new pages
+  const pagesRes = await fetchJson(
+    `${opts.apiBaseUrl}/api/v1/sites/${opts.siteSlug}/pages`,
+    readKey
+  );
+  const pages = pagesRes?.pages ?? [];
 
   const templateDir = path.resolve(
     __dirname,
@@ -108,19 +52,19 @@ export async function generate(opts: GenerateOptions): Promise<void> {
   await fs.mkdir(outDir, { recursive: true });
   await copyDir(templateDir, outDir);
 
-  // Write .env.local with site config
+  // Write .env.local
   const envLocal = [
     `CMS_API_URL=${opts.apiBaseUrl}`,
     `CMS_SITE_SLUG=${opts.siteSlug}`,
     `CMS_READ_KEY=${readKey}`,
-    `NEXT_PUBLIC_SITE_NAME=${bundle.site.name || opts.siteSlug}`,
+    `NEXT_PUBLIC_SITE_NAME=${opts.siteSlug}`,
   ].join("\n");
   await fs.writeFile(path.join(outDir, ".env.local"), envLocal);
 
-  // Write bundle.json for static generation
+  // Write a bundle.json so the site has the data statically if needed
   await fs.writeFile(
     path.join(outDir, "cms-bundle.json"),
-    JSON.stringify(bundle, null, 2)
+    JSON.stringify({ pages }, null, 2)
   );
 
   console.log(`[generator] ✓ generated at ${outDir}`);

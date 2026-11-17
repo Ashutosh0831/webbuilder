@@ -11,4 +11,4 @@ coverage/
 
 node_modules/
 .next/
-.env.local
+.env.localgenerated/

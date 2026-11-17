@@ -7,3 +7,6 @@ h1, h2 { color: #1a4d8f; }
 .card { border: 1px solid #eee; border-radius: 8px; padding: 1.25rem; }
 .card h3 { margin: 0 0 0.5rem; }
 .card .price { color: #f0a500; font-weight: 600; }
+.nav-dropdown:hover .dropdown-content {
+  display: flex !important;
+}

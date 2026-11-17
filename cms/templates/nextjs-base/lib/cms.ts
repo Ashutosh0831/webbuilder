@@ -59,3 +59,21 @@ export async function getForm(key: string) {
   const { form } = await cmsFetch<any>(`/api/v1/sites/${SITE}/forms/${key}`);
   return form;
 }
+
+export async function getAllPages() {
+  try {
+    const res = await cmsFetch<{ pages: any[] }>(
+      `/api/v1/sites/${SITE}/pages`
+    );
+    // If the API returns undefined or missing pages, return an empty array
+    return res?.pages || [];
+  } catch (error) {
+    console.error("Failed to fetch pages for navbar:", error);
+    return [];
+  }
+}
+
+export async function getPageBySlug(sectionKey: string, slug: string) {
+  const { page } = await cmsFetch<{ page: any }>(`/api/v1/sites/${SITE}/pages/${sectionKey}/${slug}`);
+  return page;
+}

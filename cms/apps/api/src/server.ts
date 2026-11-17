@@ -16,10 +16,12 @@ import { menuRoutes } from "./routes/menu.js";
 import { formRoutes } from "./routes/forms.js";
 import { ensureBucket } from "./lib/storage.js";
 import { ApiError } from "./lib/errors.js";
+import { pageRoutes } from "./routes/pages.js";
 
 const app = Fastify({ logger: true });
 
 await app.register(cors, { origin: true });
+await app.register(pageRoutes);
 await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
 
 app.setErrorHandler((err, _req, reply) => {

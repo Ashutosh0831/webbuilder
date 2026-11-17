@@ -10,7 +10,8 @@
     "db:migrate": "pnpm --filter @cms/db db:migrate",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
-    "generate": "pnpm --filter @cms/generator dev"
+    "generate": "pnpm --filter @cms/generator dev",
+    "admin:dev": "pnpm --filter @cms/admin dev"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
