@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
+import { getPublicSiteBaseUrl } from "@/lib/cms";
 
-export default function robots(): MetadataRoute.Robots {
-  const base = `https://${process.env.NEXT_PUBLIC_DOMAIN ?? "example.com"}`;
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const base = await getPublicSiteBaseUrl();
   return {
     rules: [{ userAgent: "*", allow: "/" }],
     sitemap: `${base}/sitemap.xml`,

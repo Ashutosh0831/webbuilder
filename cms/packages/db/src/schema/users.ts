@@ -12,7 +12,7 @@ import {
   apiKeyTypeEnum,
   siteStatusEnum,
   clientStatusEnum,
-} from "./enums";
+} from "./enums.js";
 
 export const clients = pgTable(
   "clients",

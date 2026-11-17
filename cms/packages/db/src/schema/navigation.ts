@@ -7,8 +7,8 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sites } from "./users";
-import { contentEntries } from "./content";
+import { sites } from "./users.js";
+import { contentEntries } from "./content.js";
 
 export const menus = pgTable(
   "menus",

@@ -7,8 +7,8 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sites } from "./users";
-import { submissionStatusEnum } from "./enums";
+import { sites } from "./users.js";
+import { submissionStatusEnum } from "./enums.js";
 
 export const forms = pgTable(
   "forms",

@@ -8,6 +8,20 @@
       "when": 1794809702798,
       "tag": "0000_foamy_morph",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794892781175,
+      "tag": "0001_jittery_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794904576000,
+      "tag": "0002_page_revisions",
+      "breakpoints": true
     }
   ]
 }

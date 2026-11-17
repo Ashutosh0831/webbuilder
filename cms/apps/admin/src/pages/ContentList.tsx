@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 
 interface Entry {
   id: string;
+  contentTypeId: string;
   slug: string;
   status: string;
   data: any;
@@ -12,31 +13,36 @@ interface Entry {
 
 export default function ContentList() {
   const { siteId, typeKey } = useParams<{ siteId: string; typeKey: string }>();
+  const navigate = useNavigate();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [types, setTypes] = useState<any[]>([]);
   const [typeId, setTypeId] = useState<string>("");
   const [creating, setCreating] = useState(false);
   const [newSlug, setNewSlug] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!siteId) return;
-    api<{ contentTypes: any[] }>(`/api/admin/sites/${siteId}/content-types`).then(
-      (r) => {
-        setTypes(r.contentTypes);
-        const t = r.contentTypes.find((x: any) => x.key === typeKey);
+    Promise.all([
+      api<{ contentTypes: any[] }>(`/api/admin/sites/${siteId}/content-types`),
+      api<{ entries: Entry[] }>(`/api/admin/sites/${siteId}/content`),
+    ]).then(([typesResult, entriesResult]) => {
+        const contentTypes = typesResult.contentTypes ?? [];
+        setTypes(contentTypes);
+        const t = contentTypes.find((x: any) => x.key === typeKey);
         setTypeId(t?.id ?? "");
-      }
-    );
-    api<{ entries: Entry[] }>(`/api/admin/sites/${siteId}/content`).then((r) =>
-      setEntries(r.entries)
-    );
+        setEntries(entriesResult.entries ?? []);
+      }).catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : "Failed to load content");
+      });
   }, [siteId, typeKey]);
 
-  const filtered = entries.filter((e) => !typeId || e.data?.__typeId === typeId) ||
-    entries;
+  const filtered = entries.filter((entry) => !typeId || entry.contentTypeId === typeId);
 
   async function createNew() {
     if (!siteId || !typeId || !newSlug) return;
+    setError(null);
+    try {
     const res = await api<{ entry: Entry }>(
       `/api/admin/sites/${siteId}/content`,
       {
@@ -50,7 +56,10 @@ export default function ContentList() {
     );
     setCreating(false);
     setNewSlug("");
-    window.location.href = `/sites/${siteId}/content/${typeKey}/${res.entry.id}`;
+    navigate(`/sites/${siteId}/content/${typeKey}/${res.entry.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create entry");
+    }
   }
 
   return (
@@ -59,6 +68,7 @@ export default function ContentList() {
         <h1>{typeKey} entries</h1>
         <button onClick={() => setCreating(true)}>+ New entry</button>
       </div>
+      {error && <p role="alert" style={{ color: "#b91c1c" }}>{error}</p>}
 
       {creating && (
         <div className="card">
@@ -68,7 +78,7 @@ export default function ContentList() {
               Slug
               <input
                 value={newSlug}
-                onChange={(e) => setNewSlug(e.target.value)}
+                onChange={(e) => setNewSlug(e.target.value.toLowerCase().trim().replace(/[^a-z0-9-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, ""))}
                 placeholder="my-new-entry"
               />
             </label>

@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useParams, Link } from "react-router-dom";
 import { api } from "../lib/api";
+import { normalizePublicSiteUrl } from "../lib/siteUrl";
 
 export default function SiteLayout() {
   const { siteId } = useParams<{ siteId: string }>();
   const [siteName, setSiteName] = useState<string>("Loading...");
+  const [publicUrl, setPublicUrl] = useState("");
+  const [contentTypes, setContentTypes] = useState<Array<{ key: string; label: string }>>([]);
 
   useEffect(() => {
     if (!siteId) return;
+    setPublicUrl("");
     // Catch errors so the layout doesn't crash if the API fails
     api<{ site: any }>(`/api/admin/sites/${siteId}`)
       .then((r) => {
@@ -15,6 +19,15 @@ export default function SiteLayout() {
         else setSiteName("Unknown Site");
       })
       .catch(() => setSiteName("Error loading site"));
+    api<{ settings: Array<{ key: string; value: unknown }> }>(`/api/admin/sites/${siteId}/settings`)
+      .then((result) => {
+        const value = result.settings?.find((setting) => setting.key === "public_url")?.value;
+        setPublicUrl(normalizePublicSiteUrl(value));
+      })
+      .catch(() => setPublicUrl(""));
+    api<{ contentTypes: Array<{ key: string; label: string }> }>(`/api/admin/sites/${siteId}/content-types`)
+      .then((result) => setContentTypes(result.contentTypes ?? []))
+      .catch(() => setContentTypes([]));
   }, [siteId]);
 
   if (!siteId) return <div>Missing site ID</div>;
@@ -29,8 +42,8 @@ export default function SiteLayout() {
         <h3 style={{ marginTop: 0, color: "#1a4d8f" }}>{siteName}</h3>
 
         <a
-          href="http://localhost:3000"
-          target="_blank"
+          href={publicUrl || `/sites/${siteId}/settings`}
+          target={publicUrl ? "_blank" : undefined}
           rel="noopener noreferrer"
           style={{
             display: "block",
@@ -44,13 +57,18 @@ export default function SiteLayout() {
             fontWeight: "bold",
           }}
         >
-          🔗 View Live Site
+          {publicUrl ? "View Live Site" : "Set public site URL"}
         </a>
 
         <div style={{ marginBottom: 4, fontSize: 12, color: "#64748b", fontWeight: "bold" }}>MENU</div>
         <NavLink to={`/sites/${siteId}`} end style={({ isActive }) => ({ display: "block", padding: "8px 12px", background: isActive ? "#eee" : "transparent" })}>
           Overview
         </NavLink>
+        {contentTypes.map((type) => (
+          <NavLink key={type.key} to={`/sites/${siteId}/content/${type.key}`} style={{ display: "block", padding: "8px 12px" }}>
+            {type.label}
+          </NavLink>
+        ))}
         
         <NavLink 
           to={`/sites/${siteId}/pages/new`} 

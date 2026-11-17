@@ -16,6 +16,72 @@ function normalizeJsonb(value: unknown): unknown {
   return value;
 }
 
+function validateSubmission(
+  schemaValue: unknown,
+  payload: unknown
+): { data: Record<string, unknown>; isSpam: boolean } {
+  const parsedPayload = z.record(z.unknown()).safeParse(payload);
+  if (!parsedPayload.success) throw Errors.badRequest("Invalid submission");
+
+  const parsedSchema = createFormSchema.shape.schema.safeParse(normalizeJsonb(schemaValue));
+  if (!parsedSchema.success) {
+    throw Errors.badRequest("Form schema is invalid");
+  }
+
+  const body = parsedPayload.data;
+  const fields = parsedSchema.data.fields;
+  const allowedKeys = new Set(fields.map((field) => field.key));
+  allowedKeys.add("_hp");
+  if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+    throw Errors.badRequest("Submission contains an unknown field");
+  }
+  if (body._hp !== undefined && typeof body._hp !== "string") {
+    throw Errors.badRequest("Invalid submission");
+  }
+
+  const data: Record<string, unknown> = { _hp: body._hp ?? "" };
+  for (const field of fields) {
+    const value = body[field.key];
+    if (field.type === "checkbox") {
+      if (value === undefined) {
+        if (field.required) throw Errors.badRequest(`${field.label} is required`);
+        data[field.key] = false;
+        continue;
+      }
+      if (typeof value !== "boolean") {
+        throw Errors.badRequest(`${field.label} must be a checkbox value`);
+      }
+      if (field.required && !value) throw Errors.badRequest(`${field.label} is required`);
+      data[field.key] = value;
+      continue;
+    }
+
+    if (value === undefined && field.required) {
+      throw Errors.badRequest(`${field.label} is required`);
+    }
+    if (value === undefined) {
+      data[field.key] = "";
+      continue;
+    }
+    if (typeof value !== "string") {
+      throw Errors.badRequest(`${field.label} must be text`);
+    }
+    if (value.length > 10000) throw Errors.badRequest(`${field.label} is too long`);
+    if (field.required && !value.trim()) {
+      throw Errors.badRequest(`${field.label} is required`);
+    }
+    if (field.type === "email" && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      throw Errors.badRequest(`${field.label} must be a valid email address`);
+    }
+    if (field.type === "select" && value && !field.options?.includes(value)) {
+      throw Errors.badRequest(`${field.label} has an invalid selection`);
+    }
+    data[field.key] = value;
+  }
+
+  return { data, isSpam: Boolean(body._hp) };
+}
+
 const createFormSchema = z.object({
   key: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/),
   name: z.string().min(1).max(100),
@@ -183,19 +249,14 @@ export async function formRoutes(app: FastifyInstance): Promise<void> {
         .limit(1);
       if (!form) throw Errors.notFound("Form not found");
 
-      const body = req.body as Record<string, unknown> | undefined;
-      if (!body || typeof body !== "object") {
-        throw Errors.badRequest("Invalid submission");
-      }
-
-      const isSpam = Boolean((body as any)._hp);
+      const { data, isSpam } = validateSubmission(form.schema, req.body);
 
       const [created] = await db
         .insert(formSubmissions)
         .values({
           siteId: site.id,
           formId: form.id,
-          data: normalizeJsonb(body) as Record<string, unknown>,
+          data,
           ip: req.ip,
           userAgent: req.headers["user-agent"] ?? null,
           status: isSpam ? "spam" : "new",

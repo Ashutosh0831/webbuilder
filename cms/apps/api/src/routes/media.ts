@@ -33,6 +33,9 @@ export async function mediaRoutes(app: FastifyInstance): Promise<void> {
 
       const data = await req.file({ limits: { fileSize: MAX_SIZE } });
       if (!data) throw Errors.badRequest("No file uploaded");
+      if (!data.mimetype.startsWith("image/")) {
+        throw Errors.badRequest("Only image files can be added to the media library");
+      }
 
       const buffer = await data.toBuffer();
       if (buffer.length === 0) throw Errors.badRequest("Empty file");

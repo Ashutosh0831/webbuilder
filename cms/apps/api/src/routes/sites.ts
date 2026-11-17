@@ -35,20 +35,24 @@ export async function siteRoutes(app: FastifyInstance): Promise<void> {
 
       const { clientId, name, siteSlug, defaultLocale } = parsed.data;
 
-      const [site] = await db
-        .insert(sites)
-        .values({ clientId, name, siteSlug, defaultLocale: defaultLocale ?? "en" })
-        .returning();
-
       const readKey = generateApiKey();
       const writeKey = generateApiKey();
       const previewKey = generateApiKey();
 
-      await db.insert(apiKeys).values([
-        { siteId: site.id, type: "read", keyHash: hashApiKey(readKey, PEPPER), label: "Initial read key" },
-        { siteId: site.id, type: "write", keyHash: hashApiKey(writeKey, PEPPER), label: "Initial write key" },
-        { siteId: site.id, type: "preview", keyHash: hashApiKey(previewKey, PEPPER), label: "Initial preview key" },
-      ]);
+      const site = await db.transaction(async (tx) => {
+        const [createdSite] = await tx
+          .insert(sites)
+          .values({ clientId, name, siteSlug, defaultLocale: defaultLocale ?? "en" })
+          .returning();
+
+        await tx.insert(apiKeys).values([
+          { siteId: createdSite.id, type: "read", keyHash: hashApiKey(readKey, PEPPER), label: "Initial read key" },
+          { siteId: createdSite.id, type: "write", keyHash: hashApiKey(writeKey, PEPPER), label: "Initial write key" },
+          { siteId: createdSite.id, type: "preview", keyHash: hashApiKey(previewKey, PEPPER), label: "Initial preview key" },
+        ]);
+
+        return createdSite;
+      });
 
       return {
         site,
@@ -110,25 +114,25 @@ export async function siteRoutes(app: FastifyInstance): Promise<void> {
         .limit(1);
       if (siteRow.length === 0) throw Errors.notFound("Site not found");
 
-      // Revoke existing active key of this type
-      await db
-        .update(apiKeys)
-        .set({ revokedAt: new Date() })
-        .where(
-          and(
-            eq(apiKeys.siteId, id),
-            eq(apiKeys.type, type as "read" | "write" | "preview"),
-            isNull(apiKeys.revokedAt)
-          )
-        );
-
-      // Create new one
       const newKey = generateApiKey();
-      await db.insert(apiKeys).values({
-        siteId: id,
-        type: type as "read" | "write" | "preview",
-        keyHash: hashApiKey(newKey, PEPPER),
-        label: `Rotated ${type} key`,
+      await db.transaction(async (tx) => {
+        await tx
+          .update(apiKeys)
+          .set({ revokedAt: new Date() })
+          .where(
+            and(
+              eq(apiKeys.siteId, id),
+              eq(apiKeys.type, type as "read" | "write" | "preview"),
+              isNull(apiKeys.revokedAt)
+            )
+          );
+
+        await tx.insert(apiKeys).values({
+          siteId: id,
+          type: type as "read" | "write" | "preview",
+          keyHash: hashApiKey(newKey, PEPPER),
+          label: `Rotated ${type} key`,
+        });
       });
 
       return { type, key: newKey, warning: "Store this key now. It is shown only once." };

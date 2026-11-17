@@ -7,12 +7,12 @@ import {
   boolean,
   index,
 } from "drizzle-orm/pg-core";
-import { sites, users } from "./users";
+import { sites, users } from "./users.js";
 import {
   eventStatusEnum,
   jobStatusEnum,
   webhookDeliveryStatusEnum,
-} from "./enums";
+} from "./enums.js";
 
 export const auditLog = pgTable(
   "audit_log",

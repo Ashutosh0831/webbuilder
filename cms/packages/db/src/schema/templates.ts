@@ -8,7 +8,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sites } from "./users";
+import { sites } from "./users.js";
 
 export const templates = pgTable(
   "templates",

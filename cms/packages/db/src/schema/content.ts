@@ -9,8 +9,8 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sites, users } from "./users";
-import { contentStatusEnum } from "./enums";
+import { sites, users } from "./users.js";
+import { contentStatusEnum } from "./enums.js";
 
 export const contentTypes = pgTable(
   "content_types",

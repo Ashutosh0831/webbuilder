@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, sql } from "drizzle-orm";
 import {
   db,
   sites,
@@ -144,38 +144,7 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
         throw Errors.badRequest("Invalid body", parsed.error.flatten());
       }
 
-      const [existing] = await db
-        .select()
-        .from(contentEntries)
-        .where(eq(contentEntries.id, id))
-        .limit(1);
-      if (!existing) throw Errors.notFound("Entry not found");
-
-      if (existing.version !== parsed.data.expectedVersion) {
-        throw Errors.conflict(
-          `Version mismatch: current is ${existing.version}, you sent ${parsed.data.expectedVersion}`
-        );
-      }
-
-      const nextVersion = existing.version + 1;
-
-      await db.insert(contentRevisions).values({
-        entryId: id,
-        version: existing.version,
-        data: existing.data,
-        seo: {
-          title: existing.seoTitle,
-          description: existing.seoDescription,
-          canonical: existing.seoCanonical,
-          ogImage: existing.seoOgImage,
-          robots: existing.seoRobots,
-        },
-        status: existing.status,
-        createdBy: req.user!.sub,
-      });
-
       const updateFields: Record<string, unknown> = {
-        version: nextVersion,
         updatedBy: req.user!.sub,
         updatedAt: new Date(),
       };
@@ -193,11 +162,51 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
       if (parsed.data.seoRobots !== undefined)
         updateFields.seoRobots = parsed.data.seoRobots;
 
-      const [updated] = await db
-        .update(contentEntries)
-        .set(updateFields)
-        .where(eq(contentEntries.id, id))
-        .returning();
+      const updated = await db.transaction(async (tx) => {
+        const [existing] = await tx
+          .select()
+          .from(contentEntries)
+          .where(eq(contentEntries.id, id))
+          .limit(1)
+          .for("update");
+        if (!existing) throw Errors.notFound("Entry not found");
+
+        if (existing.version !== parsed.data.expectedVersion) {
+          throw Errors.conflict(
+            `Version mismatch: current is ${existing.version}, you sent ${parsed.data.expectedVersion}`
+          );
+        }
+
+        await tx.insert(contentRevisions).values({
+          entryId: id,
+          version: existing.version,
+          data: existing.data,
+          seo: {
+            title: existing.seoTitle,
+            description: existing.seoDescription,
+            canonical: existing.seoCanonical,
+            ogImage: existing.seoOgImage,
+            robots: existing.seoRobots,
+          },
+          status: existing.status,
+          createdBy: req.user!.sub,
+        });
+
+        const [saved] = await tx
+          .update(contentEntries)
+          .set({ ...updateFields, version: existing.version + 1 })
+          .where(
+            and(
+              eq(contentEntries.id, id),
+              eq(contentEntries.version, parsed.data.expectedVersion)
+            )
+          )
+          .returning();
+        if (!saved) {
+          throw Errors.conflict("Entry changed while saving; refresh and try again");
+        }
+        return saved;
+      });
 
       return { entry: updated };
     }
@@ -214,10 +223,12 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
           status: "published",
           publishedAt: new Date(),
           updatedBy: req.user!.sub,
+          updatedAt: new Date(),
+          version: sql`${contentEntries.version} + 1`,
         })
-        .where(eq(contentEntries.id, id))
+        .where(and(eq(contentEntries.id, id), eq(contentEntries.status, "draft")))
         .returning();
-      if (!updated) throw Errors.notFound("Entry not found");
+      if (!updated) throw Errors.conflict("Entry not found or is not a draft");
       return { entry: updated };
     }
   );
@@ -229,10 +240,16 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
       const { id } = req.params as { id: string };
       const [updated] = await db
         .update(contentEntries)
-        .set({ status: "draft", updatedBy: req.user!.sub })
-        .where(eq(contentEntries.id, id))
+        .set({
+          status: "draft",
+          publishedAt: null,
+          updatedBy: req.user!.sub,
+          updatedAt: new Date(),
+          version: sql`${contentEntries.version} + 1`,
+        })
+        .where(and(eq(contentEntries.id, id), eq(contentEntries.status, "published")))
         .returning();
-      if (!updated) throw Errors.notFound("Entry not found");
+      if (!updated) throw Errors.conflict("Entry not found or is not published");
       return { entry: updated };
     }
   );

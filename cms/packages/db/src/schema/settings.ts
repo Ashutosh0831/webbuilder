@@ -6,7 +6,7 @@ import {
   jsonb,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sites } from "./users";
+import { sites } from "./users.js";
 
 export const siteSettings = pgTable(
   "site_settings",

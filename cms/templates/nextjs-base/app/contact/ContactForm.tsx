@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState } from "react";
 
 export function ContactForm({
@@ -15,18 +15,33 @@ export function ContactForm({
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus("sending");
+
+    const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL;
+    const siteSlug = process.env.NEXT_PUBLIC_CMS_SITE_SLUG;
+    const apiKey = process.env.NEXT_PUBLIC_CMS_READ_KEY;
+    if (!apiUrl || !siteSlug || !apiKey) {
+      setStatus("error");
+      return;
+    }
+
     const fd = new FormData(e.currentTarget);
-    const data: Record<string, string> = {};
-    fd.forEach((v, k) => (data[k] = String(v)));
+    const data: Record<string, string | boolean> = {};
+    for (const field of schema.fields) {
+      const value = fd.get(field.key);
+      data[field.key] = field.type === "checkbox"
+        ? value !== null
+        : String(value ?? "");
+    }
+    data._hp = String(fd.get("_hp") ?? "");
 
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_CMS_API_URL}/api/v1/sites/${process.env.NEXT_PUBLIC_CMS_SITE_SLUG}/forms/${formKey}/submit`,
+        `${apiUrl.replace(/\/$/, "")}/api/v1/sites/${encodeURIComponent(siteSlug)}/forms/${encodeURIComponent(formKey)}/submit`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-API-Key": process.env.NEXT_PUBLIC_CMS_READ_KEY!,
+            "X-API-Key": apiKey,
           },
           body: JSON.stringify(data),
         }
@@ -39,11 +54,11 @@ export function ContactForm({
   }
 
   if (status === "sent") {
-    return <p>✓ Thanks — we'll be in touch shortly.</p>;
+    return <p role="status">✓ Thanks — we'll be in touch shortly.</p>;
   }
 
   return (
-    <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 480 }}>
+    <form className="contact-form" onSubmit={onSubmit}>
       {schema.fields.map((f: any) => (
         <label key={f.key} style={{ display: "grid", gap: 4 }}>
           <span>{f.label}{f.required ? " *" : ""}</span>
@@ -58,6 +73,8 @@ export function ContactForm({
                 </option>
               ))}
             </select>
+          ) : f.type === "checkbox" ? (
+            <input type="checkbox" name={f.key} value="true" required={f.required} />
           ) : (
             <input
               type={f.type === "email" ? "email" : f.type === "tel" ? "tel" : "text"}
@@ -71,7 +88,8 @@ export function ContactForm({
       <button type="submit" disabled={status === "sending"}>
         {status === "sending" ? "Sending…" : "Submit"}
       </button>
-      {status === "error" && <p style={{ color: "red" }}>Error — try again.</p>}
+      {status === "error" && <p role="alert" style={{ color: "red" }}>Could not submit the form. Check the site configuration and try again.</p>}
     </form>
   );
 }
+

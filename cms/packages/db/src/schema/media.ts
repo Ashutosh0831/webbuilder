@@ -8,8 +8,8 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sites, users } from "./users";
-import { contentEntries } from "./content";
+import { sites, users } from "./users.js";
+import { contentEntries } from "./content.js";
 
 export const media = pgTable(
   "media",

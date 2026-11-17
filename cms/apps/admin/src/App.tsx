@@ -8,6 +8,8 @@ import MediaPage from "./pages/MediaPage";
 import SubmissionsPage from "./pages/SubmissionsPage";
 import SettingsPage from "./pages/SettingsPage";
 import PageEditor from "./pages/PageEditor";
+import ContentList from "./pages/ContentList";
+import EntryEditor from "./pages/EntryEditor";
 
 function Protected({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
@@ -47,6 +49,9 @@ export default function App() {
       >
         <Route index element={<SiteDashboard />} />
         <Route path="pages/new" element={<PageEditor />} />
+        <Route path="pages/:pageId/edit" element={<PageEditor />} />
+        <Route path="content/:typeKey/:entryId" element={<EntryEditor />} />
+        <Route path="content/:typeKey" element={<ContentList />} />
         <Route path="media" element={<MediaPage />} />
         <Route path="submissions" element={<SubmissionsPage />} />
         <Route path="settings" element={<SettingsPage />} />
