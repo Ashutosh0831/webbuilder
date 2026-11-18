@@ -1,3 +1,4 @@
+
 import {
   createContext,
   useContext,
@@ -5,12 +6,25 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, clearToken, getToken, setToken } from "./api";
+
+import {
+  api,
+  clearToken,
+  getToken,
+  getRefreshToken,
+  setToken,
+  setRefreshToken,
+} from "./api";
 
 interface User {
   sub: string;
   email: string;
   role: "super_admin" | null;
+}
+
+interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
 }
 
 interface AuthCtx {
@@ -22,51 +36,114 @@ interface AuthCtx {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      setLoading(false);
-      return;
+    let active = true;
+
+    async function initializeAuth() {
+      const accessToken = getToken();
+      const refreshToken = getRefreshToken();
+
+      if (!accessToken && !refreshToken) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await api<{ user: User }>(
+          "/api/admin/me"
+        );
+
+        if (active) {
+          setUser(response.user);
+        }
+      } catch (error) {
+        console.error("Auth initialization failed:", error);
+
+        if (active) {
+          setUser(null);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
     }
-    api<{ user: User }>("/api/admin/me")
-      .then((r) => setUser(r.user))
-      .catch((err) => {
-        console.error("Auth check failed:", err);
-      })
-      .finally(() => setLoading(false));
+
+    initializeAuth();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
-  async function login(email: string, password: string) {
-    const res = await api<{ accessToken: string }>(
+  async function login(
+    email: string,
+    password: string
+  ): Promise<void> {
+    const response = await api<LoginResponse>(
       "/api/admin/auth/login",
       {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email,
+          password,
+        }),
       }
     );
-    setToken(res.accessToken);
-    const me = await api<{ user: User }>("/api/admin/me");
-    setUser(me.user);
+
+    if (!response.accessToken || !response.refreshToken) {
+      throw new Error("Login response is missing authentication tokens");
+    }
+
+    setToken(response.accessToken);
+    setRefreshToken(response.refreshToken);
+
+    try {
+      const me = await api<{ user: User }>(
+        "/api/admin/me"
+      );
+
+      setUser(me.user);
+    } catch (error) {
+      clearToken();
+      setUser(null);
+      throw error;
+    }
   }
 
-  function logout() {
+  function logout(): void {
     clearToken();
     setUser(null);
   }
 
   return (
-    <Ctx.Provider value={{ user, loading, login, logout }}>
+    <Ctx.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+      }}
+    >
       {children}
     </Ctx.Provider>
   );
 }
 
 export function useAuth(): AuthCtx {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useAuth outside AuthProvider");
-  return ctx;
+  const context = useContext(Ctx);
+
+  if (!context) {
+    throw new Error("useAuth outside AuthProvider");
+  }
+
+  return context;
 }

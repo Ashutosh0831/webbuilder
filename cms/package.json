@@ -3,16 +3,19 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.0.0",
-  "scripts": {
-    "dev": "turbo run dev --parallel",
-    "build": "turbo run build",
-    "db:generate": "pnpm --filter @cms/db db:generate",
-    "db:migrate": "pnpm --filter @cms/db db:migrate",
-    "infra:up": "docker compose up -d",
-    "infra:down": "docker compose down",
-    "generate": "pnpm --filter @cms/generator dev",
-    "admin:dev": "pnpm --filter @cms/admin dev"
-  },
+ 
+"scripts": {
+  "dev": "turbo run dev --parallel --filter=@cms/admin --filter=@cms/api",
+  "build": "turbo run build",
+  "db:generate": "pnpm --filter @cms/db db:generate",
+  "db:migrate": "pnpm --filter @cms/db db:migrate",
+  "infra:up": "docker compose up -d",
+  "infra:down": "docker compose down",
+  "generate": "pnpm --filter @cms/generator dev",
+  "admin:dev": "pnpm --filter @cms/admin dev",
+  "api:dev": "pnpm --filter @cms/api dev"
+},
+
   "devDependencies": {
     "@types/node": "^26.6.6",
     "turbo": "^2.0.0",

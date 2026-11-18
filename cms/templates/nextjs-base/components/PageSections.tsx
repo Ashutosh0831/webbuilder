@@ -49,8 +49,27 @@ function renderBlock(section: any, key: string) {
   }
   if (section.type === "table") return <div className="cms-table-wrap" key={key}><table className="cms-table"><thead><tr>{section.data.headers.map((cell: string, index: number) => <th key={index}>{renderInlineMarkdown(cell)}</th>)}</tr></thead><tbody>{section.data.rows.map((row: string[], rowIndex: number) => <tr key={rowIndex}>{section.data.headers.map((_: string, cellIndex: number) => <td key={cellIndex}>{renderInlineMarkdown(row[cellIndex] ?? "")}</td>)}</tr>)}</tbody></table></div>;
   if (section.type === "image") return <figure className="cms-image" key={key}><img src={section.data.src} alt={section.data.alt} />{section.data.caption && <figcaption>{renderInlineMarkdown(section.data.caption)}</figcaption>}</figure>;
-  if (section.type === "text") return <div className="cms-copy" key={key}>{renderInlineMarkdown(section.data.content)}</div>;
-  return null;
+  if (section.type === "text") {
+  const paragraphs = String(section.data.content ?? "")
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  return (
+    <div className="cms-copy" key={key}>
+      {paragraphs.map((paragraph, index) => (
+        <p key={index}>
+          {paragraph.split("\n").map((line, lineIndex) => (
+            <span key={lineIndex}>
+              {lineIndex > 0 && <br />}
+              {renderInlineMarkdown(line)}
+            </span>
+          ))}
+        </p>
+      ))}
+    </div>
+  );
+}
 }
 
 export default function PageSections({ sections }: { sections: unknown }) {
