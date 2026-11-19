@@ -79,6 +79,30 @@ export const users = pgTable(
   })
 );
 
+export const userClientAccess = pgTable(
+  "user_client_access",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("client_owner"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    uniqueUserClient: uniqueIndex("user_client_access_unique_idx").on(
+      t.userId,
+      t.clientId
+    ),
+    clientIdx: index("user_client_access_client_idx").on(t.clientId),
+  })
+);
+
 export const userSiteAccess = pgTable(
   "user_site_access",
   {
@@ -103,6 +127,51 @@ export const userSiteAccess = pgTable(
   })
 );
 
+export const refreshTokens = pgTable(
+  "refresh_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    familyId: uuid("family_id").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    replacedById: uuid("replaced_by_id"),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tokenHashIdx: uniqueIndex("refresh_tokens_hash_idx").on(t.tokenHash),
+    userIdx: index("refresh_tokens_user_idx").on(t.userId),
+    familyIdx: index("refresh_tokens_family_idx").on(t.familyId),
+  })
+);
+
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tokenHashIdx: uniqueIndex("password_reset_tokens_hash_idx").on(t.tokenHash),
+    userIdx: index("password_reset_tokens_user_idx").on(t.userId),
+  })
+);
+
 export const apiKeys = pgTable(
   "api_keys",
   {
@@ -112,6 +181,7 @@ export const apiKeys = pgTable(
       .references(() => sites.id, { onDelete: "cascade" }),
     type: apiKeyTypeEnum("type").notNull(),
     keyHash: text("key_hash").notNull(),
+    encryptedKey: text("encrypted_key"),
     label: text("label"),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),

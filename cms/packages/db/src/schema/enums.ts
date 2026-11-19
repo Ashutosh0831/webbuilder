@@ -8,6 +8,13 @@ export const contentStatusEnum = pgEnum("content_status", [
   "archived",
 ]);
 
+export const pageApprovalStatusEnum = pgEnum("page_approval_status", [
+  "draft",
+  "in_review",
+  "approved",
+  "rejected",
+]);
+
 export const apiKeyTypeEnum = pgEnum("api_key_type", [
   "read",
   "write",
@@ -15,6 +22,7 @@ export const apiKeyTypeEnum = pgEnum("api_key_type", [
 ]);
 
 export const siteRoleEnum = pgEnum("site_role", [
+  "client_owner",
   "client_admin",
   "editor",
   "viewer",

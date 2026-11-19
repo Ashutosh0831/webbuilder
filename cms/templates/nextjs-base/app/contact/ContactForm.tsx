@@ -18,8 +18,7 @@ export function ContactForm({
 
     const apiUrl = process.env.NEXT_PUBLIC_CMS_API_URL;
     const siteSlug = process.env.NEXT_PUBLIC_CMS_SITE_SLUG;
-    const apiKey = process.env.NEXT_PUBLIC_CMS_READ_KEY;
-    if (!apiUrl || !siteSlug || !apiKey) {
+    if (!apiUrl || !siteSlug) {
       setStatus("error");
       return;
     }
@@ -39,10 +38,7 @@ export function ContactForm({
         `${apiUrl.replace(/\/$/, "")}/api/v1/sites/${encodeURIComponent(siteSlug)}/forms/${encodeURIComponent(formKey)}/submit`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-Key": apiKey,
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         }
       );

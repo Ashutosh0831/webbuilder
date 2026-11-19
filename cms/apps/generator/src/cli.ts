@@ -11,6 +11,7 @@ const { values } = parseArgs({
       type: "string",
       default: process.env.API_BASE_URL ?? "http://localhost:4000",
     },
+    "output-dir": { type: "string" },
   },
 });
 
@@ -23,4 +24,5 @@ await generate({
   siteSlug: values.site,
   stack: values.stack ?? "nextjs",
   apiBaseUrl: values["api-url"]!,
+  outputDir: values["output-dir"],
 });

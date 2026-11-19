@@ -1,33 +1,30 @@
+let accessToken: string | null = null;
+const LEGACY_TOKEN_KEYS = ["cms_admin_token", "cms_admin_refresh_token"];
 
-const TOKEN_KEY = "cms_admin_token";
-const REFRESH_TOKEN_KEY = "cms_admin_refresh_token";
+try {
+  for (const key of LEGACY_TOKEN_KEYS) localStorage.removeItem(key);
+} catch {
+  // Storage may be disabled; browser auth no longer depends on it.
+}
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return accessToken;
 }
 
 export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
-}
-
-export function setRefreshToken(token: string): void {
-  localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  accessToken = token;
 }
 
 export function clearToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  accessToken = null;
 }
 
 export class ApiError extends Error {
   constructor(
     public status: number,
     public code: string,
-    message: string
+    message: string,
+    public details?: unknown
   ) {
     super(message);
     this.name = "ApiError";
@@ -37,13 +34,6 @@ export class ApiError extends Error {
 let refreshPromise: Promise<string | null> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = getRefreshToken();
-
-  if (!refreshToken) {
-    clearToken();
-    return null;
-  }
-
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {
@@ -52,7 +42,8 @@ async function refreshAccessToken(): Promise<string | null> {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ refreshToken }),
+          body: "{}",
+          credentials: "include",
         });
 
         if (!response.ok) {
@@ -87,7 +78,7 @@ async function sendRequest(
 ): Promise<Response> {
   const headers = new Headers(options.headers);
 
-  if (options.body && !headers.has("Content-Type")) {
+  if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -99,6 +90,7 @@ async function sendRequest(
 
   return fetch(path, {
     ...options,
+    credentials: "include",
     headers,
   });
 }
@@ -141,7 +133,8 @@ export async function api<T = unknown>(
     throw new ApiError(
       response.status,
       error.code ?? "ERROR",
-      error.message ?? response.statusText
+      error.message ?? response.statusText,
+      error.details
     );
   }
 

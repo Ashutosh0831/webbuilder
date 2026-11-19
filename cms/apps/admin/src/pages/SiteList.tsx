@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -8,13 +8,13 @@ interface Site { id: string; name: string; siteSlug: string; clientId: string; s
 interface CreatedSite { site: Site; keys: { read: string; write: string; preview: string }; warning: string; }
 
 export default function SitesList() {
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<CreatedSite | null>(null);
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [clientId, setClientId] = useState("");
@@ -43,7 +43,6 @@ export default function SitesList() {
     event.preventDefault();
     setSaving(true);
     setError(null);
-    setCreated(null);
     try {
       let selectedClientId = clientId;
       if (!selectedClientId) {
@@ -61,13 +60,12 @@ export default function SitesList() {
         method: "POST",
         body: JSON.stringify({ clientId: selectedClientId, name: siteName.trim(), siteSlug: siteSlug.trim() }),
       });
-      setCreated(result);
       setClientName("");
       setClientEmail("");
       setClientId("");
       setSiteName("");
       setSiteSlug("");
-      await load();
+      navigate(`/sites/${result.site.id}`, { state: { createdSite: result } });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create site");
     } finally {
@@ -87,20 +85,6 @@ export default function SitesList() {
       <div className="content">
         <h1>Sites</h1>
         {error && <div className="card" role="alert" style={{ color: "#b91c1c" }}>{error}</div>}
-        {created && (
-          <div className="card" role="status">
-            <h2>{created.site.name} created</h2>
-            <p>{created.warning} Copy and store these keys now; they cannot be retrieved later.</p>
-            <div className="form-grid">
-              {Object.entries(created.keys).map(([type, key]) => (
-                <label key={type}>{type} API key
-                  <input readOnly value={key} onFocus={(e) => e.currentTarget.select()} />
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-
         <section className="card">
           <h2>Create a website</h2>
           <form className="form-grid" onSubmit={createSite}>

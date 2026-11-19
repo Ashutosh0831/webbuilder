@@ -1,4 +1,3 @@
-
 import {
   pgTable,
   uuid,
@@ -6,12 +5,13 @@ import {
   timestamp,
   jsonb,
   integer,
+  boolean,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import { sites, users } from "./users.js";
-import { contentStatusEnum } from "./enums.js";
+import { contentStatusEnum, pageApprovalStatusEnum } from "./enums.js";
 
 export const pages = pgTable(
   "pages",
@@ -41,9 +41,29 @@ export const pages = pgTable(
       .notNull()
       .default([]),
 
+    // Separate draft payload when editing an already-published page
+    draftContent: jsonb("draft_content"),
+
+    hasUnpublishedChanges: boolean("has_unpublished_changes")
+      .notNull()
+      .default(false),
+
+    publishedVersion: integer("published_version"),
+
     status: contentStatusEnum("status")
       .notNull()
       .default("draft"),
+
+    approvalStatus: pageApprovalStatusEnum("approval_status")
+      .notNull()
+      .default("draft"),
+
+    assignedReviewerId: uuid("assigned_reviewer_id").references(() => users.id, { onDelete: "set null" }),
+    reviewSubmittedAt: timestamp("review_submitted_at", { withTimezone: true }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewComment: text("review_comment"),
+    scheduledPublishAt: timestamp("scheduled_publish_at", { withTimezone: true }),
+    scheduledUnpublishAt: timestamp("scheduled_unpublish_at", { withTimezone: true }),
 
     seoTitle: text("seo_title"),
     seoDescription: text("seo_description"),
@@ -99,5 +119,24 @@ export const pages = pgTable(
       table.siteId,
       table.createdAt
     ),
+  })
+);
+
+export const pageReviewHistory = pgTable(
+  "page_review_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+    pageId: uuid("page_id").notNull().references(() => pages.id, { onDelete: "cascade" }),
+    pageVersion: integer("page_version").notNull(),
+    action: text("action").notNull(),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    assignedReviewerId: uuid("assigned_reviewer_id").references(() => users.id, { onDelete: "set null" }),
+    comment: text("comment"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pageCreatedIdx: index("page_review_history_page_created_idx").on(table.pageId, table.createdAt),
+    reviewerIdx: index("page_review_history_reviewer_idx").on(table.assignedReviewerId, table.createdAt),
   })
 );

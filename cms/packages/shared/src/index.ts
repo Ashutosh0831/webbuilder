@@ -11,8 +11,30 @@ export type ContentStatus = (typeof CONTENT_STATUSES)[number];
 export const API_KEY_TYPES = ["read", "write", "preview"] as const;
 export type ApiKeyType = (typeof API_KEY_TYPES)[number];
 
-export const SITE_ROLES = ["client_admin", "editor", "viewer"] as const;
+export const SITE_ROLES = [
+  "client_owner",
+  "client_admin",
+  "editor",
+  "viewer",
+] as const;
 export type SiteRole = (typeof SITE_ROLES)[number];
+
+export const SITE_ROLE_RANK: Record<SiteRole, number> = {
+  viewer: 1,
+  editor: 2,
+  client_admin: 3,
+  client_owner: 4,
+};
+
+export function hasMinSiteRole(
+  actual: SiteRole | null | undefined,
+  required: SiteRole
+): boolean {
+  if (!actual) return false;
+  return SITE_ROLE_RANK[actual] >= SITE_ROLE_RANK[required];
+}
 
 export const PLATFORM_ROLES = ["super_admin"] as const;
 export type PlatformRole = (typeof PLATFORM_ROLES)[number];
+
+export * from "./parserSchema.js";

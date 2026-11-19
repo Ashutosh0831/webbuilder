@@ -2,7 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, eq, desc } from "drizzle-orm";
 import { db, sites, forms, formSubmissions, events } from "@cms/db";
-import { requireSuperAdmin, requireApiKey } from "../middleware/auth.js";
+import { requireApiKey, requireSiteRole } from "../middleware/auth.js";
+import { enforceRateLimit } from "../lib/rateLimit.js";
 import { Errors } from "../lib/errors.js";
 
 function normalizeJsonb(value: unknown): unknown {
@@ -104,7 +105,7 @@ export async function formRoutes(app: FastifyInstance): Promise<void> {
 
   app.post(
     "/api/admin/sites/:siteId/forms",
-    { preHandler: requireSuperAdmin },
+    { preHandler: requireSiteRole("client_admin") },
     async (req) => {
       const { siteId } = req.params as { siteId: string };
       const parsed = createFormSchema.safeParse(req.body);
@@ -133,7 +134,7 @@ export async function formRoutes(app: FastifyInstance): Promise<void> {
 
   app.get(
     "/api/admin/sites/:siteId/forms",
-    { preHandler: requireSuperAdmin },
+    { preHandler: requireSiteRole("viewer") },
     async (req) => {
       const { siteId } = req.params as { siteId: string };
       const rows = await db.select().from(forms).where(eq(forms.siteId, siteId));
@@ -143,7 +144,7 @@ export async function formRoutes(app: FastifyInstance): Promise<void> {
 
   app.get(
     "/api/admin/sites/:siteId/submissions",
-    { preHandler: requireSuperAdmin },
+    { preHandler: requireSiteRole("viewer") },
     async (req) => {
       const { siteId } = req.params as { siteId: string };
       const q = req.query as { formId?: string };
@@ -224,22 +225,30 @@ export async function formRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // Submit a form (honeypot-based spam protection)
+  // Submit a form (honeypot-based spam protection + rate limiting)
   app.post(
     "/api/v1/sites/:siteSlug/forms/:key/submit",
-    { preHandler: requireApiKey("read") },
     async (req) => {
       const { siteSlug, key } = req.params as {
         siteSlug: string;
         key: string;
       };
+      await enforceRateLimit(
+        {
+          key: `form:${req.ip}:${siteSlug}:${key}`,
+          limit: 15,
+          windowMs: 10 * 60 * 1000,
+        },
+        "Too many form submissions. Please wait a few minutes."
+      );
+
       const [site] = await db
         .select({ id: sites.id })
         .from(sites)
         .where(eq(sites.siteSlug, siteSlug))
         .limit(1);
       if (!site) throw Errors.notFound("Site not found");
-      if (req.siteScope?.siteId !== site.id) {
+      if (req.siteScope && req.siteScope.siteId !== site.id) {
         throw Errors.forbidden("API key not valid for this site");
       }
       const [form] = await db

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "dotenv -e ../../.env -- tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "test": "tsx --test src/lib/parser.test.ts",
+    "test": "tsx --test src/lib/parser.test.ts src/lib/security.test.ts src/lib/mediaFolder.test.ts",
     "start": "dotenv -e ../../.env -- node dist/server.js"
   },
   "dependencies": {

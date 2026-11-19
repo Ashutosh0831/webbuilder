@@ -8,6 +8,7 @@ import {
   contentEntries,
   contentRevisions,
   contentRelations,
+  events,
   siteSettings as siteSettingsTable,
   templates,
 } from "@cms/db";
@@ -205,10 +206,20 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
         if (!saved) {
           throw Errors.conflict("Entry changed while saving; refresh and try again");
         }
-        return saved;
+        if (saved.status === "published") {
+          const [contentType] = await tx.select({ key: contentTypes.key }).from(contentTypes).where(eq(contentTypes.id, saved.contentTypeId)).limit(1);
+          if (contentType) {
+            await tx.insert(events).values({
+              siteId: saved.siteId,
+              type: "content.updated",
+              payload: { contentTypeKey: contentType.key, slug: saved.slug, previousSlug: existing.slug },
+            });
+          }
+        }
+        return { entry: saved, previousSlug: existing.slug };
       });
 
-      return { entry: updated };
+      return { entry: updated.entry };
     }
   );
 
@@ -217,18 +228,17 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: requireSuperAdmin },
     async (req) => {
       const { id } = req.params as { id: string };
-      const [updated] = await db
-        .update(contentEntries)
-        .set({
-          status: "published",
-          publishedAt: new Date(),
-          updatedBy: req.user!.sub,
-          updatedAt: new Date(),
-          version: sql`${contentEntries.version} + 1`,
-        })
-        .where(and(eq(contentEntries.id, id), eq(contentEntries.status, "draft")))
-        .returning();
-      if (!updated) throw Errors.conflict("Entry not found or is not a draft");
+      const updated = await db.transaction(async (tx) => {
+        const [entry] = await tx
+          .update(contentEntries)
+          .set({ status: "published", publishedAt: new Date(), updatedBy: req.user!.sub, updatedAt: new Date(), version: sql`${contentEntries.version} + 1` })
+          .where(and(eq(contentEntries.id, id), eq(contentEntries.status, "draft")))
+          .returning();
+        if (!entry) throw Errors.conflict("Entry not found or is not a draft");
+        const [contentType] = await tx.select({ key: contentTypes.key }).from(contentTypes).where(eq(contentTypes.id, entry.contentTypeId)).limit(1);
+        if (contentType) await tx.insert(events).values({ siteId: entry.siteId, type: "content.published", payload: { contentTypeKey: contentType.key, slug: entry.slug } });
+        return entry;
+      });
       return { entry: updated };
     }
   );
@@ -238,18 +248,17 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: requireSuperAdmin },
     async (req) => {
       const { id } = req.params as { id: string };
-      const [updated] = await db
-        .update(contentEntries)
-        .set({
-          status: "draft",
-          publishedAt: null,
-          updatedBy: req.user!.sub,
-          updatedAt: new Date(),
-          version: sql`${contentEntries.version} + 1`,
-        })
-        .where(and(eq(contentEntries.id, id), eq(contentEntries.status, "published")))
-        .returning();
-      if (!updated) throw Errors.conflict("Entry not found or is not published");
+      const updated = await db.transaction(async (tx) => {
+        const [entry] = await tx
+          .update(contentEntries)
+          .set({ status: "draft", publishedAt: null, updatedBy: req.user!.sub, updatedAt: new Date(), version: sql`${contentEntries.version} + 1` })
+          .where(and(eq(contentEntries.id, id), eq(contentEntries.status, "published")))
+          .returning();
+        if (!entry) throw Errors.conflict("Entry not found or is not published");
+        const [contentType] = await tx.select({ key: contentTypes.key }).from(contentTypes).where(eq(contentTypes.id, entry.contentTypeId)).limit(1);
+        if (contentType) await tx.insert(events).values({ siteId: entry.siteId, type: "content.unpublished", payload: { contentTypeKey: contentType.key, slug: entry.slug } });
+        return entry;
+      });
       return { entry: updated };
     }
   );
@@ -259,11 +268,17 @@ export async function contentEntryRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: requireSuperAdmin },
     async (req) => {
       const { id } = req.params as { id: string };
-      const [deleted] = await db
-        .delete(contentEntries)
-        .where(eq(contentEntries.id, id))
-        .returning({ id: contentEntries.id });
-      if (!deleted) throw Errors.notFound("Entry not found");
+      const deleted = await db.transaction(async (tx) => {
+        const [existing] = await tx.select().from(contentEntries).where(eq(contentEntries.id, id)).limit(1);
+        if (!existing) throw Errors.notFound("Entry not found");
+        const [removed] = await tx.delete(contentEntries).where(eq(contentEntries.id, id)).returning({ id: contentEntries.id });
+        if (!removed) throw Errors.notFound("Entry not found");
+        if (existing.status === "published") {
+          const [contentType] = await tx.select({ key: contentTypes.key }).from(contentTypes).where(eq(contentTypes.id, existing.contentTypeId)).limit(1);
+          if (contentType) await tx.insert(events).values({ siteId: existing.siteId, type: "content.deleted", payload: { contentTypeKey: contentType.key, slug: existing.slug } });
+        }
+        return removed;
+      });
       return { deleted: true, id: deleted.id };
     }
   );

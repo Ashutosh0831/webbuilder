@@ -1,7 +1,7 @@
 ﻿import type { Metadata } from "next";
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { getAllPages, getMenu, getPublicSiteSettings } from "@/lib/cms";
+import { getInternalRouteIndex, getMenu, getPublicSiteSettings, pagePathForSection } from "@/lib/cms";
 import "./globals.css";
 
 function readableSiteName(value: string) {
@@ -12,9 +12,16 @@ function readableSiteName(value: string) {
     .join(" ");
 }
 
-function safeMenuUrl(value?: string) {
+function safeMenuUrl(value: string | undefined, validRoutes: Set<string>) {
   if (typeof value !== "string") return null;
-  if (value.startsWith("/") && !value.startsWith("//")) return value;
+  if (value.startsWith("/") && !value.startsWith("//")) {
+    try {
+      const url = new URL(value, "https://internal.invalid");
+      const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/$/, "") : "/";
+      if (!validRoutes.has(pathname)) return null;
+      return `${pathname}${url.search}${url.hash}`;
+    } catch { return null; }
+  }
   return safeExternalUrl(value);
 }
 
@@ -65,7 +72,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const [settings, pages, mainMenu] = await Promise.all([getPublicSiteSettings(), getAllPages(), getMenu("main").catch(() => null)]);
+  const [settings, routeIndex, mainMenu] = await Promise.all([
+    getPublicSiteSettings(),
+    getInternalRouteIndex(),
+    getMenu("main").catch(() => null),
+  ]);
+  const { pages, services, routes: validRoutes } = routeIndex;
   
   // Group pages into sections (services, locations, etc.)
   const groupedPages = pages.reduce((acc: any, page: any) => {
@@ -73,6 +85,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     acc[page.section_key].push(page);
     return acc;
   }, {});
+  const serviceLinksBySlug = new Map<string, { id: string; title: string; href: string }>();
+  for (const page of pages.filter((item: any) => ["service", "services"].includes(String(item.section_key).toLowerCase()))) {
+    serviceLinksBySlug.set(page.slug, { id: `page-${page.id}`, title: page.title, href: `/services/${page.slug}` });
+  }
+  for (const service of services) {
+    serviceLinksBySlug.set(service.slug, {
+      id: service.id,
+      title: String(service.data.title ?? service.slug),
+      href: `/services/${service.slug}`,
+    });
+  }
+  const serviceLinks = [...serviceLinksBySlug.values()];
+  const hasConfiguredMenuItems = Array.isArray(mainMenu?.items) && mainMenu.items.some((item: any) =>
+    Boolean(safeMenuUrl(item.url, validRoutes)) ||
+    (Array.isArray(item.children) && item.children.some((child: any) => Boolean(safeMenuUrl(child.url, validRoutes))))
+  );
 
   const siteName = settings.brand_name || readableSiteName(process.env.NEXT_PUBLIC_SITE_NAME ?? "Local Service Company");
   const siteTagline = settings.tagline || "Local care. Lasting results.";
@@ -93,17 +121,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     : settings.font_style === "friendly"
       ? { body: "Trebuchet MS, Arial, sans-serif", heading: "Trebuchet MS, Arial, sans-serif" }
       : { body: "'DM Sans', Arial, sans-serif", heading: "'Manrope', 'DM Sans', Arial, sans-serif" };
+  const layoutStyle = ["editorial", "rounded", "bold"].includes(settings.layout_style ?? "")
+    ? settings.layout_style!
+    : "modern";
       
   const themeStyle = {
     "--green": primaryColor,
     "--gold": accentColor,
     "--site-font-body": fonts.body,
     "--site-font-heading": fonts.heading,
+    "--site-radius-card": layoutStyle === "rounded" ? "24px" : layoutStyle === "editorial" || layoutStyle === "bold" ? "2px" : "12px",
+    "--site-radius-button": layoutStyle === "rounded" ? "999px" : layoutStyle === "editorial" || layoutStyle === "bold" ? "2px" : "8px",
+    "--site-shadow": layoutStyle === "editorial" ? "none" : layoutStyle === "bold" ? "0 12px 30px rgb(20 40 34 / 15%)" : "0 20px 55px rgb(22 50 37 / 9%)",
   } as CSSProperties;
 
   return (
     <html lang="en">
-      <body style={themeStyle}>
+      <body data-layout={layoutStyle} style={themeStyle}>
         <div className="announcement-bar">
           <div className="container announcement-inner">
             <span>{settings.announcement_text || settings.service_area || settings.area_name || "Locally owned. Here when you need us."}</span>
@@ -117,27 +151,34 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <span>{siteName}<small>{siteTagline}</small></span>
             </Link>
             <nav className="main-nav" aria-label="Main navigation">
-              {Array.isArray(mainMenu?.items) && mainMenu.items.length ? (
+              {hasConfiguredMenuItems ? (
                 // If you manually configured a menu in the database, use it
                 mainMenu.items.map((item: any) => {
-                  const href = safeMenuUrl(item.url);
-                  const children = Array.isArray(item.children) ? item.children.filter((child: any) => safeMenuUrl(child.url)) : [];
-                  if (!href) return null;
-                  if (!children.length) return <Link key={item.id} href={href}>{item.label}</Link>;
-                  return <details className="nav-pages" key={item.id}><summary>{item.label} <span aria-hidden="true">⌄</span></summary><div className="nav-page-menu"><Link href={href}>{item.label}</Link>{children.map((child: any) => <Link key={child.id} href={safeMenuUrl(child.url)!}>{child.label}</Link>)}</div></details>;
+                  const href = safeMenuUrl(item.url, validRoutes);
+                  const configuredChildren = Array.isArray(item.children) ? item.children.filter((child: any) => safeMenuUrl(child.url, validRoutes)) : [];
+                  const childrenByUrl = new Map(configuredChildren.map((child: any) => [safeMenuUrl(child.url, validRoutes), child]));
+                  if (href?.replace(/\/$/, "") === "/services") {
+                    for (const service of serviceLinks) {
+                      if (!childrenByUrl.has(service.href)) childrenByUrl.set(service.href, { id: service.id, label: service.title, url: service.href });
+                    }
+                  }
+                  const children = [...childrenByUrl.values()];
+                  if (!children.length) return href ? <Link key={item.id} href={href}>{item.label}</Link> : null;
+                  return <details className="nav-pages" key={item.id}><summary>{href ? <Link href={href}>{item.label}</Link> : item.label} <span aria-hidden="true">⌄</span></summary><div className="nav-page-menu">{href && <Link href={href}>{item.label}</Link>}{children.map((child: any) => { const childHref = safeMenuUrl(child.url, validRoutes); return childHref ? <Link key={child.id} href={childHref}>{child.label}</Link> : null; })}</div></details>;
                 })
               ) : (
                 // OTHERWISE: Render the dynamic pages grouped by section
                 <>
                   <Link href="/">Home</Link>
-                  {Object.entries(groupedPages).map(([sectionKey, sectionPages]: any) => (
+                  {serviceLinks.length ? <details className="nav-pages" key="services"><summary>{settings.nav_services_label || "Services"} <span aria-hidden="true">⌄</span></summary><div className="nav-page-menu"><Link href="/services">All services</Link>{serviceLinks.map((service) => <Link key={service.id} href={service.href}>{service.title}</Link>)}</div></details> : <Link href="/services">{settings.nav_services_label || "Services"}</Link>}
+                  {Object.entries(groupedPages).filter(([sectionKey]) => !["service", "services"].includes(sectionKey.toLowerCase())).map(([sectionKey, sectionPages]: any) => (
                     <details className="nav-pages" key={sectionKey}>
                       <summary style={{ textTransform: "capitalize" }}>
                         {sectionKey} <span aria-hidden="true">⌄</span>
                       </summary>
                       <div className="nav-page-menu">
                         {sectionPages.map((p: any) => (
-                          <Link key={p.id} href={`/${p.section_key}/${p.slug}`}>
+                          <Link key={p.id} href={pagePathForSection(p.section_key, p.slug)}>
                             {p.title}
                           </Link>
                         ))}
@@ -146,6 +187,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   ))}
                 </>
               )}
+              {hasConfiguredMenuItems && !mainMenu.items.some((item: any) => safeMenuUrl(item.url, validRoutes)?.replace(/\/$/, "") === "/services") ? (
+                serviceLinks.length ? <details className="nav-pages" key="auto-services"><summary>{settings.nav_services_label || "Services"} <span aria-hidden="true">⌄</span></summary><div className="nav-page-menu"><Link href="/services">All services</Link>{serviceLinks.map((service) => <Link key={service.id} href={service.href}>{service.title}</Link>)}</div></details> : <Link href="/services">{settings.nav_services_label || "Services"}</Link>
+              ) : null}
             </nav>
             <div className="nav-actions">
               {settings.phone ? <a className="nav-phone" href={`tel:${phoneHref}`}>{settings.phone}</a> : null}

@@ -2,6 +2,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import crypto from "node:crypto";
@@ -47,10 +48,6 @@ export function buildStorageKey(
   return `${siteId}/${hash}${ext}`;
 }
 
-export function publicUrlForKey(key: string): string {
-  return `${endpoint}/${bucket}/${key}`;
-}
-
 export async function uploadToS3(
   key: string,
   body: Buffer,
@@ -64,6 +61,16 @@ export async function uploadToS3(
       ContentType: contentType,
     })
   );
+}
+
+export async function downloadFromS3(key: string): Promise<Buffer> {
+  const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (!result.Body) throw new Error("Stored media object has no body");
+  return Buffer.from(await result.Body.transformToByteArray());
+}
+
+export async function deleteFromS3(key: string): Promise<void> {
+  await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 export async function getPresignedGetUrl(key: string, expiresIn = 3600) {

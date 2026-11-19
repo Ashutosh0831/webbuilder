@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getEntry, getPageBySlug } from "@/lib/cms";
 import PageSections from "@/components/PageSections";
 
-export const revalidate = 0;
+export const revalidate = 3600;
 
 async function getBlogPage(slug: string) {
   try { return await getPageBySlug("blog", slug); } catch { return null; }

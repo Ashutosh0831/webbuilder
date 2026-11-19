@@ -8,10 +8,11 @@ export interface GenerateOptions {
   siteSlug: string;
   stack: string;
   apiBaseUrl: string;
+  outputDir?: string;
 }
 
 async function fetchJson<T>(url: string, key: string): Promise<T | null> {
-  const res = await fetch(url, { headers: { "X-API-Key": key } });
+  const res = await fetch(url, { headers: { "X-API-Key": key }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) {
     if (res.status === 404) return null;
     throw new Error(`${url} → ${res.status}: ${await res.text()}`);
@@ -44,14 +45,32 @@ export async function generate(opts: GenerateOptions): Promise<void> {
     );
   }
 
+  const revalidateSecret = process.env.REVALIDATE_SECRET ?? "";
+  if (revalidateSecret.length < 32) {
+    throw new Error(
+      "REVALIDATE_SECRET must be configured with at least 32 characters so CMS changes can refresh the generated site"
+    );
+  }
+
   console.log(`[generator] fetching data for site "${opts.siteSlug}"...`);
 
-  // Fetch the new pages
-  const pagesRes = await fetchJson<{ pages?: any[] }>(
-    `${apiBaseUrl}/api/v1/sites/${opts.siteSlug}/pages`,
-    readKey
-  );
+  const [pagesRes, settingsRes, menuRes] = await Promise.all([
+    fetchJson<{ pages?: any[] }>(
+      `${apiBaseUrl}/api/v1/sites/${opts.siteSlug}/pages`,
+      readKey
+    ),
+    fetchJson<{ settings?: Record<string, unknown> }>(
+      `${apiBaseUrl}/api/v1/sites/${opts.siteSlug}/settings/public`,
+      readKey
+    ),
+    fetchJson<{ menu?: unknown }>(
+      `${apiBaseUrl}/api/v1/sites/${opts.siteSlug}/menus/main`,
+      readKey
+    ),
+  ]);
   const pages = pagesRes?.pages ?? [];
+  const settings = settingsRes?.settings ?? {};
+  const menu = menuRes?.menu ?? null;
 
   const templatesRoot = path.resolve(__dirname, "../../../templates");
   const templateName = `${opts.stack}-base`;
@@ -63,11 +82,12 @@ export async function generate(opts: GenerateOptions): Promise<void> {
     throw new Error(`Unsupported stack "${opts.stack}". Available: ${stacks.join(", ") || "none"}`);
   }
   const templateDir = path.join(templatesRoot, templateName);
-  const outDir = path.resolve(
-    __dirname,
-    "../../../generated",
-    opts.siteSlug
-  );
+  const generatedRoot = path.resolve(__dirname, "../../../generated");
+  const outDir = path.resolve(opts.outputDir ?? path.join(generatedRoot, opts.siteSlug));
+  const relativeOutputPath = path.relative(generatedRoot, outDir);
+  if (!relativeOutputPath || relativeOutputPath === ".." || relativeOutputPath.startsWith(`..${path.sep}`) || path.isAbsolute(relativeOutputPath)) {
+    throw new Error("outputDir must be a site-specific directory inside the generated folder");
+  }
 
   console.log(`[generator] copying template ${templateDir} → ${outDir}...`);
   let existingEnv = "";
@@ -79,26 +99,35 @@ export async function generate(opts: GenerateOptions): Promise<void> {
   await fs.mkdir(outDir, { recursive: true });
   await copyDir(templateDir, outDir);
 
-  // Refresh generated values while preserving local settings such as NEXT_PUBLIC_DOMAIN.
-  const envLocal = mergeEnv(existingEnv, {
-    CMS_API_URL: apiBaseUrl,
-    CMS_SITE_SLUG: opts.siteSlug,
-    CMS_READ_KEY: readKey,
-    NEXT_PUBLIC_CMS_API_URL: apiBaseUrl,
-    NEXT_PUBLIC_CMS_SITE_SLUG: opts.siteSlug,
-    NEXT_PUBLIC_CMS_READ_KEY: readKey,
-    NEXT_PUBLIC_SITE_NAME: opts.siteSlug,
-  });
+  // Never expose private API keys via NEXT_PUBLIC_* variables
+  const envLocal = mergeEnv(
+    stripPublicSecrets(existingEnv),
+    {
+      CMS_API_URL: apiBaseUrl,
+      CMS_SITE_SLUG: opts.siteSlug,
+      CMS_READ_KEY: readKey,
+      REVALIDATE_SECRET: revalidateSecret,
+      NEXT_PUBLIC_CMS_API_URL: apiBaseUrl,
+      NEXT_PUBLIC_CMS_SITE_SLUG: opts.siteSlug,
+      NEXT_PUBLIC_SITE_NAME: String(settings.brand_name ?? opts.siteSlug),
+    }
+  );
   await fs.writeFile(path.join(outDir, ".env.local"), envLocal);
 
-  // Write a bundle.json so the site has the data statically if needed
   await fs.writeFile(
     path.join(outDir, "cms-bundle.json"),
-    JSON.stringify({ pages }, null, 2)
+    JSON.stringify({ pages, settings, menu }, null, 2)
   );
 
   console.log(`[generator] ✓ generated at ${outDir}`);
-  console.log(`[generator] next: cd ${outDir} && pnpm install && pnpm dev`);
+  console.log(`[generator] next: cd ${outDir} && pnpm install && pnpm build`);
+}
+
+function stripPublicSecrets(existing: string): string {
+  return existing
+    .split(/\r?\n/)
+    .filter((line) => !/^NEXT_PUBLIC_CMS_READ_KEY=/.test(line))
+    .join("\n");
 }
 
 function mergeEnv(existing: string, updates: Record<string, string>): string {

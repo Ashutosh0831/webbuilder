@@ -6,6 +6,19 @@ export interface InterpolationContext {
 
 const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g;
 
+const BRACKET_PLACEHOLDER_MAP: Record<string, string[]> = {
+  COMPANY_NAME: ["brand_name", "company_name"],
+  PHONE_NUMBER: ["phone", "primary_phone"],
+  EMAIL: ["contact_email", "email"],
+  BUSINESS_ADDRESS: ["address", "business_address"],
+  WEBSITE_URL: ["public_url", "website_url"],
+  SERVICE_AREA: ["service_area", "area_name"],
+  TAGLINE: ["tagline"],
+};
+
+const BRACKET_PLACEHOLDER_RE =
+  /\[(COMPANY_NAME|PHONE_NUMBER|EMAIL|BUSINESS_ADDRESS|WEBSITE_URL|SERVICE_AREA|TAGLINE|Company Name|Phone Number)\]/gi;
+
 function lookupPath(
   path: string,
   ctx: InterpolationContext
@@ -42,8 +55,49 @@ function lookupPath(
 }
 
 /**
+ * Replace dynamic site placeholders such as [COMPANY_NAME], [PHONE_NUMBER],
+ * [EMAIL], [BUSINESS_ADDRESS], [WEBSITE_URL] using siteSettings.
+ */
+export function resolveSitePlaceholders(
+  text: string,
+  siteSettings: Record<string, unknown>
+): string {
+  return text.replace(BRACKET_PLACEHOLDER_RE, (full, rawKey: string) => {
+    const normalized = rawKey.toUpperCase().replace(/\s+/g, "_");
+    const candidateKeys = BRACKET_PLACEHOLDER_MAP[normalized] ?? [];
+    for (const key of candidateKeys) {
+      const val = siteSettings[key];
+      if (typeof val === "string" && val.trim()) return val.trim();
+      if (typeof val === "number") return String(val);
+    }
+    return full;
+  });
+}
+
+export function resolveSitePlaceholdersDeep<T>(
+  obj: T,
+  siteSettings: Record<string, unknown>
+): T {
+  const walk = (val: unknown): unknown => {
+    if (typeof val === "string") {
+      return resolveSitePlaceholders(val, siteSettings);
+    }
+    if (Array.isArray(val)) return val.map(walk);
+    if (val && typeof val === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(val)) {
+        out[k] = walk(v);
+      }
+      return out;
+    }
+    return val;
+  };
+  return walk(obj) as T;
+}
+
+/**
  * Interpolate {{placeholders}} in a template string.
- * Resolution order: entry → siteSettings → globalSettings.
+ * Resolution order: entry -> siteSettings -> globalSettings.
  * Missing placeholders are left as-is so failures are visible.
  */
 export function interpolate(
@@ -51,7 +105,8 @@ export function interpolate(
   ctx: InterpolationContext
 ): { resolved: string; missing: string[] } {
   const missing: string[] = [];
-  const resolved = template.replace(PLACEHOLDER_RE, (full, path: string) => {
+  const withBrackets = resolveSitePlaceholders(template, ctx.siteSettings);
+  const resolved = withBrackets.replace(PLACEHOLDER_RE, (full, path: string) => {
     const { value, source } = lookupPath(path, ctx);
     if (source === "missing" || value === undefined || value === null) {
       missing.push(path);

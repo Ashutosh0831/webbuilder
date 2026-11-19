@@ -12,7 +12,6 @@ export default function SiteLayout() {
   useEffect(() => {
     if (!siteId) return;
     setPublicUrl("");
-    // Catch errors so the layout doesn't crash if the API fails
     api<{ site: any }>(`/api/admin/sites/${siteId}`)
       .then((r) => {
         if (r?.site?.name) setSiteName(r.site.name);
@@ -38,7 +37,7 @@ export default function SiteLayout() {
         <Link to="/" style={{ marginBottom: 16, display: "block", fontWeight: "bold" }}>
           ← Back to Sites
         </Link>
-        
+
         <h3 style={{ marginTop: 0, color: "#1a4d8f" }}>{siteName}</h3>
 
         <a
@@ -62,16 +61,16 @@ export default function SiteLayout() {
 
         <div style={{ marginBottom: 4, fontSize: 12, color: "#64748b", fontWeight: "bold" }}>MENU</div>
         <NavLink to={`/sites/${siteId}`} end style={({ isActive }) => ({ display: "block", padding: "8px 12px", background: isActive ? "#eee" : "transparent" })}>
-          Overview
+          Overview & Pages
         </NavLink>
         {contentTypes.map((type) => (
           <NavLink key={type.key} to={`/sites/${siteId}/content/${type.key}`} style={{ display: "block", padding: "8px 12px" }}>
             {type.label}
           </NavLink>
         ))}
-        
-        <NavLink 
-          to={`/sites/${siteId}/pages/new`} 
+
+        <NavLink
+          to={`/sites/${siteId}/pages/new`}
           style={({ isActive }) => ({
             display: "block",
             padding: "10px",
@@ -82,17 +81,20 @@ export default function SiteLayout() {
             borderRadius: 6,
             fontWeight: "bold",
             textAlign: "center",
-            textDecoration: "none"
+            textDecoration: "none",
           })}
         >
           + Add New Page
         </NavLink>
 
-        <NavLink to={`/sites/${siteId}/media`} style={{ display: "block", padding: "8px 12px" }}>Media</NavLink>
-        <NavLink to={`/sites/${siteId}/submissions`} style={{ display: "block", padding: "8px 12px" }}>Submissions</NavLink>
-        <NavLink to={`/sites/${siteId}/settings`} style={{ display: "block", padding: "8px 12px" }}>Settings</NavLink>
+        <NavLink to={`/sites/${siteId}/media`} style={{ display: "block", padding: "8px 12px" }}>Media Library</NavLink>
+        <NavLink to={`/sites/${siteId}/menus`} style={{ display: "block", padding: "8px 12px" }}>Navigation Menus</NavLink>
+        <NavLink to={`/sites/${siteId}/submissions`} style={{ display: "block", padding: "8px 12px" }}>Form Submissions</NavLink>
+        <NavLink to={`/sites/${siteId}/deployments`} style={{ display: "block", padding: "8px 12px" }}>Deployments</NavLink>
+        <NavLink to={`/sites/${siteId}/users-keys`} style={{ display: "block", padding: "8px 12px" }}>Users, Keys & Logs</NavLink>
+        <NavLink to={`/sites/${siteId}/settings`} style={{ display: "block", padding: "8px 12px" }}>Site Settings</NavLink>
       </aside>
-      
+
       <main className="content">
         <Outlet />
       </main>

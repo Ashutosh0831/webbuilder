@@ -19,6 +19,7 @@ export const media = pgTable(
       .notNull()
       .references(() => sites.id, { onDelete: "cascade" }),
     filename: text("filename").notNull(),
+    folder: text("folder").notNull().default(""),
     storageKey: text("storage_key").notNull(),
     url: text("url").notNull(),
     mime: text("mime").notNull(),
@@ -36,6 +37,7 @@ export const media = pgTable(
   },
   (t) => ({
     siteIdx: index("media_site_idx").on(t.siteId),
+    siteFolderIdx: index("media_site_folder_idx").on(t.siteId, t.folder),
     storageKeyIdx: uniqueIndex("media_storage_key_idx").on(t.storageKey),
   })
 );

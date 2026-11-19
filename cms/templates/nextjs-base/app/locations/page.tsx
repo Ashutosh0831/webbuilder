@@ -1,8 +1,8 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { getAllPages, getEntries, getPageBySlug, getPublicSiteSettings } from "@/lib/cms";
 import PageSections from "@/components/PageSections";
 
-export const revalidate = 0;
+export const revalidate = 3600;
 async function getLocationsPage() {
   for (const section of ["locations", "location"]) {
     for (const slug of ["locations", "location"]) {

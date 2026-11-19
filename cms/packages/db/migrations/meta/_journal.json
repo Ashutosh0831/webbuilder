@@ -22,6 +22,55 @@
       "when": 1794904576000,
       "tag": "0002_page_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794904576001,
+      "tag": "0003_security_auth_rbac",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794904576002,
+      "tag": "0004_draft_versioning_and_deployments",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794904576003,
+      "tag": "0005_outbox_reliability",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795013000000,
+      "tag": "0006_page_approval_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795013700000,
+      "tag": "0007_scheduled_page_publishing",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795015877000,
+      "tag": "0008_encrypted_site_read_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795020000000,
+      "tag": "0009_media_folders",
+      "breakpoints": true
     }
   ]
 }

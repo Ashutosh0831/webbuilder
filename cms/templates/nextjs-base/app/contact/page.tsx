@@ -3,7 +3,7 @@ import { getForm, getPageBySlug, getPublicSiteSettings } from "@/lib/cms";
 import { ContactForm } from "./ContactForm";
 import PageSections from "@/components/PageSections";
 
-export const revalidate = 0;
+export const revalidate = 3600;
 
 async function getContactPage() {
   for (const slug of ["contact", "contact-us"]) {

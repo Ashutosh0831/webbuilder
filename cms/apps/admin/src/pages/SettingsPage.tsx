@@ -14,6 +14,12 @@ const fontPresets = [
   { id: "classic", label: "Classic" },
   { id: "friendly", label: "Friendly" },
 ];
+const layoutPresets = [
+  { id: "modern", label: "Modern" },
+  { id: "editorial", label: "Editorial" },
+  { id: "rounded", label: "Rounded" },
+  { id: "bold", label: "Bold" },
+];
 type MediaAsset = { id: string; url: string; filename: string; altText?: string | null };
 
 export default function SettingsPage() {
@@ -87,6 +93,10 @@ export default function SettingsPage() {
       setMsg("Choose valid primary and accent colors.");
       return;
     }
+    if (settings.layout_style && !layoutPresets.some((preset) => preset.id === settings.layout_style)) {
+      setMsg("Choose a supported website layout.");
+      return;
+    }
     setBusy(true);
     try {
       const items = Object.entries(settings).map(([key, value]) => ({ key, value }));
@@ -102,8 +112,8 @@ export default function SettingsPage() {
     }
   }
 
-  const keys = ["area_name", "brand_name", "tagline", "announcement_text", "announcement_phone_label", "announcement_fallback_text", "nav_services_label", "nav_locations_label", "nav_resources_label", "nav_faq_label", "nav_more_label", "header_cta_label", "footer_note", "footer_explore_title", "footer_services_label", "footer_locations_label", "footer_resources_label", "footer_faq_label", "footer_contact_title", "footer_estimate_label", "footer_copyright_text", "home_heading", "home_intro", "home_cta_label", "logo_url", "home_hero_image_url", "home_hero_image_alt", "phone", "contact_email", "service_area", "facebook_url", "instagram_url", "linkedin_url", "public_url", "primary_color", "accent_color", "font_style"];
-  const labels: Record<string, string> = { area_name: "Area name", brand_name: "Brand name", tagline: "Website tagline", announcement_text: "Announcement bar text", announcement_phone_label: "Announcement phone label", announcement_fallback_text: "Announcement text when no phone is set", nav_services_label: "Navigation: services", nav_locations_label: "Navigation: locations", nav_resources_label: "Navigation: resources", nav_faq_label: "Navigation: FAQs", nav_more_label: "Navigation: more pages", header_cta_label: "Header button text", footer_note: "Footer introduction", footer_explore_title: "Footer explore heading", footer_services_label: "Footer: services", footer_locations_label: "Footer: locations", footer_resources_label: "Footer: resources", footer_faq_label: "Footer: FAQs", footer_contact_title: "Footer contact heading", footer_estimate_label: "Footer estimate link", footer_copyright_text: "Footer copyright text", home_heading: "Homepage headline", home_intro: "Homepage introduction", home_cta_label: "Homepage button text", logo_url: "Logo image URL", home_hero_image_url: "Homepage hero image URL", home_hero_image_alt: "Homepage hero image alt text", phone: "Phone", contact_email: "Contact email", service_area: "Service area", facebook_url: "Facebook URL", instagram_url: "Instagram URL", linkedin_url: "LinkedIn URL", public_url: "Public website URL", primary_color: "Theme primary color", accent_color: "Theme accent color", font_style: "Website typography" };
+  const keys = ["area_name", "brand_name", "tagline", "announcement_text", "announcement_phone_label", "announcement_fallback_text", "nav_services_label", "nav_locations_label", "nav_resources_label", "nav_faq_label", "nav_more_label", "header_cta_label", "footer_note", "footer_explore_title", "footer_services_label", "footer_locations_label", "footer_resources_label", "footer_faq_label", "footer_contact_title", "footer_estimate_label", "footer_copyright_text", "home_heading", "home_intro", "home_cta_label", "logo_url", "home_hero_image_url", "home_hero_image_alt", "phone", "contact_email", "service_area", "facebook_url", "instagram_url", "linkedin_url", "public_url", "primary_color", "accent_color", "font_style", "layout_style"];
+  const labels: Record<string, string> = { area_name: "Area name", brand_name: "Brand name", tagline: "Website tagline", announcement_text: "Announcement bar text", announcement_phone_label: "Announcement phone label", announcement_fallback_text: "Announcement text when no phone is set", nav_services_label: "Navigation: services", nav_locations_label: "Navigation: locations", nav_resources_label: "Navigation: resources", nav_faq_label: "Navigation: FAQs", nav_more_label: "Navigation: more pages", header_cta_label: "Header button text", footer_note: "Footer introduction", footer_explore_title: "Footer explore heading", footer_services_label: "Footer: services", footer_locations_label: "Footer: locations", footer_resources_label: "Footer: resources", footer_faq_label: "Footer: FAQs", footer_contact_title: "Footer contact heading", footer_estimate_label: "Footer estimate link", footer_copyright_text: "Footer copyright text", home_heading: "Homepage headline", home_intro: "Homepage introduction", home_cta_label: "Homepage button text", logo_url: "Logo image URL", home_hero_image_url: "Homepage hero image URL", home_hero_image_alt: "Homepage hero image alt text", phone: "Phone", contact_email: "Contact email", service_area: "Service area", facebook_url: "Facebook URL", instagram_url: "Instagram URL", linkedin_url: "LinkedIn URL", public_url: "Public website URL", primary_color: "Theme primary color", accent_color: "Theme accent color", font_style: "Website typography", layout_style: "Website layout" };
   const currentPreset = themePresets.find((preset) =>
     (settings.primary_color || "#176d50").toLowerCase() === preset.primary &&
     (settings.accent_color || "#c8913f").toLowerCase() === preset.accent
@@ -141,7 +151,13 @@ export default function SettingsPage() {
           {keys.map((k) => (
             <label key={k}>
               {labels[k] ?? k}
-              {k === "font_style" ? <select
+              {k === "layout_style" ? <select
+                value={settings.layout_style || "modern"}
+                onChange={(e) => set("layout_style", e.target.value)}
+                disabled={loading || busy}
+              >
+                {layoutPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+              </select> : k === "font_style" ? <select
                 value={settings.font_style || "modern"}
                 onChange={(e) => set("font_style", e.target.value)}
                 disabled={loading || busy}
@@ -183,7 +199,7 @@ export default function SettingsPage() {
         </div>
         <section className="card" aria-label="Live website theme preview" style={{ marginTop: 20, borderColor: previewAccent }}>
           <p style={{ margin: "0 0 12px", color: previewPrimary, fontWeight: 700 }}>Live website preview</p>
-          <div style={{ padding: 20, borderRadius: 10, background: `color-mix(in srgb, ${previewPrimary} 5%, #fff)`, border: `1px solid color-mix(in srgb, ${previewPrimary} 18%, #fff)`, fontFamily: previewFonts.body }}>
+          <div className="settings-site-preview" data-layout={settings.layout_style || "modern"} style={{ padding: 20, borderRadius: 10, background: `color-mix(in srgb, ${previewPrimary} 5%, #fff)`, border: `1px solid color-mix(in srgb, ${previewPrimary} 18%, #fff)`, fontFamily: previewFonts.body }}>
             {previewLogo ? <img src={previewLogo} alt="Logo preview" style={{ display: "block", maxWidth: 150, maxHeight: 48, objectFit: "contain", marginBottom: 12 }} /> : null}
             {previewHeroImage ? <img src={previewHeroImage} alt={settings.home_hero_image_alt || "Homepage hero preview"} style={{ display: "block", width: "100%", maxHeight: 130, objectFit: "cover", borderRadius: 7, marginBottom: 12 }} /> : null}
             <span style={{ display: "inline-block", marginBottom: 10, padding: "4px 9px", borderRadius: 20, background: previewAccent, color: "#fff", fontSize: 12, fontWeight: 700 }}>LOCAL SERVICE</span>

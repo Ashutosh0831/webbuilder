@@ -1,9 +1,20 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { eq, and, isNull } from "drizzle-orm";
-import { db, sites, clients, apiKeys } from "@cms/db";
-import { requireSuperAdmin } from "../middleware/auth.js";
-import { generateApiKey, hashApiKey } from "../lib/crypto.js";
+import { eq, and, isNull, inArray } from "drizzle-orm";
+import {
+  db,
+  sites,
+  clients,
+  apiKeys,
+  userSiteAccess,
+  userClientAccess,
+} from "@cms/db";
+import {
+  requireJwt,
+  requireSiteRole,
+  requireSuperAdmin,
+} from "../middleware/auth.js";
+import { encryptApiKey, generateApiKey, hashApiKey } from "../lib/crypto.js";
 import { Errors } from "../lib/errors.js";
 
 const PEPPER = process.env.API_KEY_PEPPER!;
@@ -46,7 +57,7 @@ export async function siteRoutes(app: FastifyInstance): Promise<void> {
           .returning();
 
         await tx.insert(apiKeys).values([
-          { siteId: createdSite.id, type: "read", keyHash: hashApiKey(readKey, PEPPER), label: "Initial read key" },
+          { siteId: createdSite.id, type: "read", keyHash: hashApiKey(readKey, PEPPER), encryptedKey: encryptApiKey(readKey, PEPPER), label: "Initial read key" },
           { siteId: createdSite.id, type: "write", keyHash: hashApiKey(writeKey, PEPPER), label: "Initial write key" },
           { siteId: createdSite.id, type: "preview", keyHash: hashApiKey(previewKey, PEPPER), label: "Initial preview key" },
         ]);
@@ -66,15 +77,54 @@ export async function siteRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // List sites (optionally filtered by client)
+  // List sites (filtered by user's site/client access unless super_admin)
   app.get(
     "/api/admin/sites",
-    { preHandler: requireSuperAdmin },
+    { preHandler: requireJwt },
     async (req) => {
       const { clientId } = req.query as { clientId?: string };
-      const rows = clientId
-        ? await db.select().from(sites).where(eq(sites.clientId, clientId))
-        : await db.select().from(sites);
+
+      if (req.user!.role === "super_admin") {
+        const rows = clientId
+          ? await db.select().from(sites).where(eq(sites.clientId, clientId))
+          : await db.select().from(sites);
+        return { sites: rows };
+      }
+
+      const [directSites, ownedClients] = await Promise.all([
+        db
+          .select({ siteId: userSiteAccess.siteId })
+          .from(userSiteAccess)
+          .where(eq(userSiteAccess.userId, req.user!.sub)),
+        db
+          .select({ clientId: userClientAccess.clientId })
+          .from(userClientAccess)
+          .where(eq(userClientAccess.userId, req.user!.sub)),
+      ]);
+
+      const directIds = directSites.map((r) => r.siteId);
+      const clientIds = ownedClients.map((r) => r.clientId);
+
+      let rows: (typeof sites.$inferSelect)[] = [];
+      if (clientIds.length > 0) {
+        const clientSites = await db
+          .select()
+          .from(sites)
+          .where(inArray(sites.clientId, clientIds));
+        rows.push(...clientSites);
+      }
+      if (directIds.length > 0) {
+        const extraSites = await db
+          .select()
+          .from(sites)
+          .where(inArray(sites.id, directIds));
+        for (const s of extraSites) {
+          if (!rows.some((r) => r.id === s.id)) rows.push(s);
+        }
+      }
+      if (clientId) {
+        rows = rows.filter((r) => r.clientId === clientId);
+      }
       return { sites: rows };
     }
   );
@@ -82,7 +132,7 @@ export async function siteRoutes(app: FastifyInstance): Promise<void> {
   // Get one site
   app.get(
     "/api/admin/sites/:id",
-    { preHandler: requireSuperAdmin },
+    { preHandler: requireSiteRole("viewer", "id") },
     async (req) => {
       const { id } = req.params as { id: string };
       const [row] = await db
@@ -98,7 +148,7 @@ export async function siteRoutes(app: FastifyInstance): Promise<void> {
   // Rotate an API key of a given type
   app.post(
     "/api/admin/sites/:id/keys/rotate",
-    { preHandler: requireSuperAdmin },
+    { preHandler: requireSiteRole("client_admin", "id") },
     async (req) => {
       const { id } = req.params as { id: string };
       const body = req.body as { type?: string };
@@ -131,6 +181,7 @@ export async function siteRoutes(app: FastifyInstance): Promise<void> {
           siteId: id,
           type: type as "read" | "write" | "preview",
           keyHash: hashApiKey(newKey, PEPPER),
+          encryptedKey: type === "read" ? encryptApiKey(newKey, PEPPER) : null,
           label: `Rotated ${type} key`,
         });
       });
@@ -142,7 +193,7 @@ export async function siteRoutes(app: FastifyInstance): Promise<void> {
   // List active keys metadata (not the keys themselves — those are not stored)
   app.get(
     "/api/admin/sites/:id/keys",
-    { preHandler: requireSuperAdmin },
+    { preHandler: requireSiteRole("client_admin", "id") },
     async (req) => {
       const { id } = req.params as { id: string };
       const rows = await db

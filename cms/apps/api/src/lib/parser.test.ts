@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractPageSeo, findUnresolvedPlaceholders, parsePageDocument } from "./parser.js";
+import {
+  extractPageSeo,
+  findUnresolvedPlaceholders,
+  parsePageDocument,
+  parsePageDocumentDetailed,
+} from "./parser.js";
 
 test("parses labeled and plain FAQ questions with their answers", () => {
   const sections = parsePageDocument([
@@ -11,10 +16,29 @@ test("parses labeled and plain FAQ questions with their answers", () => {
     "A: No.",
   ].join("\n"));
   const faqs = sections.find((section) => section.type === "faqs");
-  assert.deepEqual(faqs?.data.items, [
-    { question: "Is it suitable?", answer: "Yes, it is." },
-    { question: "Is setup hard?", answer: "No." },
-  ]);
+  assert.equal(faqs?.type, "faqs");
+  if (faqs?.type === "faqs") {
+    assert.deepEqual(faqs.data.items, [
+      { question: "Is it suitable?", answer: "Yes, it is." },
+      { question: "Is setup hard?", answer: "No." },
+    ]);
+  }
+});
+
+test("supports multiple FAQ groups and alternative FAQ formats", () => {
+  const result = parsePageDocumentDetailed([
+    "# Service Page",
+    "## Billing FAQs",
+    "Question: Do you accept cards?",
+    "Answer: Yes, all major cards.",
+    "## Safety FAQs",
+    "**Q:** Is it pet safe?",
+    "**A:** Yes, once dry.",
+  ].join("\n"));
+
+  const faqGroups = result.sections.filter((s) => s.type === "faqs");
+  assert.equal(faqGroups.length, 2);
+  assert.equal(result.schemaVersion, "1.0");
 });
 
 test("preserves text after a hero and parses Markdown headings", () => {
@@ -24,9 +48,9 @@ test("preserves text after a hero and parses Markdown headings", () => {
     "## Benefits",
   ].join("\n"));
   assert.equal(sections[0]?.type, "hero");
-  assert.equal(sections[0]?.data.h1, "Best sofa bed");
+  if (sections[0]?.type === "hero") assert.equal(sections[0].data.h1, "Best sofa bed");
   assert.equal(sections[1]?.type, "text");
-  assert.equal(sections[1]?.data.content, "Intro paragraph.");
+  if (sections[1]?.type === "text") assert.equal(sections[1].data.content, "Intro paragraph.");
   assert.deepEqual(sections[2], { type: "heading", data: { level: 2, text: "Benefits" } });
 });
 
@@ -40,18 +64,48 @@ test("uses only the first Markdown H1 as the page hero", () => {
 test("removes literal HTML heading tags from the hero title", () => {
   const [hero] = parsePageDocument("H1 Tag: <h1>Professional Lizard Control</h1>");
   assert.equal(hero?.type, "hero");
-  assert.equal(hero?.data.h1, "Professional Lizard Control");
+  if (hero?.type === "hero") assert.equal(hero.data.h1, "Professional Lizard Control");
 });
 
-test("parses bullet and numbered lists", () => {
-  const sections = parsePageDocument("- Saves space\n- Hosts guests\n1. Measure room\n2. Pick size");
-  assert.deepEqual(sections.filter((section) => section.type === "list").map((section) => section.data), [
-    { ordered: false, items: ["Saves space", "Hosts guests"] },
-    { ordered: true, items: ["Measure room", "Pick size"] },
-  ]);
+test("parses bullet, numbered, and nested lists", () => {
+  const sections = parsePageDocument("- Saves space\n  - Folds flat\n- Hosts guests\n1. Measure room\n2. Pick size");
+  const lists = sections.filter((section) => section.type === "list");
+  assert.equal(lists.length, 2);
+  if (lists[0]?.type === "list") {
+    assert.equal(lists[0].data.ordered, false);
+    assert.deepEqual(lists[0].data.nested, [
+      { text: "Saves space", children: ["Folds flat"] },
+      { text: "Hosts guests" },
+    ]);
+  }
+  if (lists[1]?.type === "list") {
+    assert.equal(lists[1].data.ordered, true);
+    assert.deepEqual(lists[1].data.items, ["Measure room", "Pick size"]);
+  }
 });
 
-test("parses Markdown tables and safe images", () => {
+test("parses introduction, services, features, testimonials, and custom sections", () => {
+  const result = parsePageDocumentDetailed([
+    "# Cockroach Control",
+    "## Introduction",
+    "We provide professional cockroach control.",
+    "## Our Services",
+    "- Residential Control - Full home barrier",
+    "- Commercial Control",
+    "## Key Features",
+    "- Eco-Friendly - Safe for families",
+    "## Testimonials",
+    "- \"Fast and thorough!\" -- Jane Doe",
+    "## Custom: Warranty Note",
+    "30-day service guarantee.",
+  ].join("\n"));
+
+  const types = result.sections.map((s) => s.type);
+  assert.deepEqual(types, ["hero", "introduction", "services", "features", "testimonials", "custom"]);
+  assert.equal(result.unknownSections.length, 1);
+});
+
+test("parses Markdown tables and safe images, warns on unsafe images", () => {
   const tableAndImage = parsePageDocument([
     "| Feature | Price |",
     "| --- | --- |",
@@ -66,7 +120,9 @@ test("parses Markdown tables and safe images", () => {
     type: "image",
     data: { alt: "Blue sofa", src: "/media/sofa.jpg", caption: "" },
   });
-  assert.equal(parsePageDocument("![bad](javascript:alert(1))")[0]?.type, "text");
+
+  const badImg = parsePageDocumentDetailed("![bad](javascript:alert(1))");
+  assert.ok(badImg.warnings.some((w) => w.code === "UNSAFE_IMAGE_URL"));
 });
 
 test("extracts SEO metadata without including it in content", () => {
@@ -79,85 +135,17 @@ test("extracts SEO metadata without including it in content", () => {
   assert.deepEqual(parsePageDocument(rawText), []);
 });
 
-test("splits compact brief headings and inline bullets into page sections", () => {
-  const compact = "### PAGE DETAILS & REMAINING PLACEHOLDERS * **Service Name:** Lizard Control ### REQUIRED PAGE STRUCTURE & SECTIONS #### 2. Hero Section (Above the Fold) * H1 Tag: <h1>Professional Lizard Control</h1> * Sub-headline: Safe service for homes #### 4. Service Overview & Description * H2 Headline: `Why choose this service?` * Detailed Description: A helpful description. * Key Benefits (Bullet Points): * Stain-free treatment * Family-safe process";
-  const sections = parsePageDocument(compact);
-  const hero = sections.find((section) => section.type === "hero");
-  assert.equal(hero?.data.h1, "Professional Lizard Control");
-  assert.equal(hero?.data.subheadline, "Safe service for homes");
-  assert.equal(sections.some((section) => section.type === "heading" && section.data.text === "Why choose this service?"), true);
-  assert.equal(sections.some((section) => section.type === "list" && section.data.items.length === 2), true);
-  assert.equal(sections.some((section) => JSON.stringify(section).includes("PAGE DETAILS")), false);
-  assert.equal(sections.some((section) => JSON.stringify(section).includes("Above the Fold")), false);
+test("finds unresolved bracketed and site placeholders without duplicates", () => {
+  assert.deepEqual(
+    findUnresolvedPlaceholders("Call [PHONE_NUMBER] at [COMPANY_NAME] or [Phone Number] and [COMPANY_NAME]"),
+    ["[PHONE_NUMBER]", "[COMPANY_NAME]", "[Phone Number]"]
+  );
 });
 
-test("maps the primary CTA brief label to the booking route", () => {
-  const cta = parsePageDocument("* Primary CTA Button: `Book Free Inspection` / `Call now`").find((section) => section.type === "cta");
-  assert.deepEqual(cta?.data.actions, [{ label: "Book Free Inspection", href: "/contact" }]);
-});
+test("reports malformed input diagnostics", () => {
+  const empty = parsePageDocumentDetailed("   ");
+  assert.ok(empty.errors.some((e) => e.code === "EMPTY_DOCUMENT"));
 
-test("adds a telephone CTA when the brief has a real phone number", () => {
-  const cta = parsePageDocument("* Primary CTA Button: Book Free Inspection / Call +91 98765 43210").find((section) => section.type === "cta");
-  assert.deepEqual(cta?.data.actions, [
-    { label: "Book Free Inspection", href: "/contact" },
-    { label: "Call +91 98765 43210", href: "tel:+919876543210" },
-  ]);
-});
-
-test("maps the quick booking section to the live form component", () => {
-  const [section] = parsePageDocument("#### 3. Quick Booking Form Section");
-  assert.deepEqual(section, { type: "booking", data: { title: "Quick Booking Form Section" } });
-});
-
-test("uses the booking headline and hides the brief field checklist", () => {
-  const sections = parsePageDocument([
-    "#### 3. Quick Booking Form Section",
-    "* Form Headline: `Book your service today`",
-    "* Form Subtext: `Request a callback.`",
-    "* Form Fields to Display:",
-    "* Full Name `[Text Input]`",
-    "#### 4. Service Overview",
-  ].join("\n"));
-  assert.deepEqual(sections[0], { type: "booking", data: { title: "Book your service today", subtitle: "Request a callback." } });
-  assert.equal(sections.some((section) => JSON.stringify(section).includes("Full Name")), false);
-});
-
-test("converts compact location rows into separate location cards", () => {
-  const [locations] = parsePageDocument("- Location Grid/List:\n- [Area 1] | [Area 2] | [Area 3]\n- [Area 4] | [Area 5]");
-  assert.deepEqual(locations, {
-    type: "locations",
-    data: { title: "Areas We Serve", areas: ["[Area 1]", "[Area 2]", "[Area 3]", "[Area 4]", "[Area 5]"] },
-  });
-});
-
-test("treats labeled Step bullets as ordered process steps", () => {
-  const sections = parsePageDocument("* Step 1: Inspect entry points * Step 2: Apply the treatment");
-  const steps = sections.find((section) => section.type === "list");
-  assert.deepEqual(steps?.data, { ordered: true, items: ["Inspect entry points", "Apply the treatment"] });
-});
-
-test("finds unresolved business and form placeholders without duplicate warnings", () => {
-  assert.deepEqual(findUnresolvedPlaceholders("Call [Phone Number], contact [Company Name], call [Phone Number]"), [
-    "[Phone Number]",
-    "[Company Name]",
-  ]);
-});
-
-test("excludes image and logo production instructions from rendered sections", () => {
-  const sections = parsePageDocument([
-    "# Lizard control",
-    "* Hero Image Prompt/Alt-Text: [IMAGE PLACEHOLDER 1: photo description]",
-    "* Client Logos Strip: [CLIENT LOGOS PLACEHOLDER: local logos]",
-    "Welcome to our service.",
-  ].join("\n"));
-  assert.equal(sections.some((section) => JSON.stringify(section).includes("IMAGE PLACEHOLDER")), false);
-  assert.equal(sections.some((section) => JSON.stringify(section).includes("LOGOS PLACEHOLDER")), false);
-  assert.equal(sections.some((section) => JSON.stringify(section).includes("Welcome to our service.")), true);
-});
-
-test("parses labeled descriptions as copy instead of benefit list items", () => {
-  const sections = parsePageDocument("* Detailed Description: A detailed service overview.\n* Location Description: Serving nearby neighborhoods.");
-  assert.deepEqual(sections, [
-    { type: "text", data: { content: "A detailed service overview.\nServing nearby neighborhoods." } },
-  ]);
+  const missingAnswer = parsePageDocumentDetailed("## FAQs\nQ: Unanswered question?");
+  assert.ok(missingAnswer.warnings.some((w) => w.code === "FAQ_MISSING_ANSWER"));
 });

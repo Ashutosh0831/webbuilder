@@ -5,6 +5,7 @@ import {
   timestamp,
   jsonb,
   boolean,
+  integer,
   index,
 } from "drizzle-orm/pg-core";
 import { sites, users } from "./users.js";
@@ -57,6 +58,9 @@ export const events = pgTable(
       .notNull()
       .defaultNow(),
     processedAt: timestamp("processed_at", { withTimezone: true }),
+    attempts: integer("attempts").notNull().default(0),
+    availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
   },
   (t) => ({
     statusCreatedIdx: index("events_status_created_idx").on(
@@ -132,6 +136,37 @@ export const generationJobs = pgTable(
     siteStatusIdx: index("generation_jobs_site_status_idx").on(
       t.siteId,
       t.status
+    ),
+  })
+);
+
+export const deployments = pgTable(
+  "deployments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("PENDING"), // PENDING | BUILDING | READY | FAILED | CANCELLED
+    target: text("target").notNull().default("local"), // local | docker | vercel
+    domain: text("domain"),
+    liveUrl: text("live_url"),
+    outputPath: text("output_path"),
+    logs: text("logs").notNull().default(""),
+    errorMessage: text("error_message"),
+    rollbackFromId: uuid("rollback_from_id"),
+    triggeredBy: uuid("triggered_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => ({
+    siteCreatedIdx: index("deployments_site_created_idx").on(
+      t.siteId,
+      t.createdAt
     ),
   })
 );

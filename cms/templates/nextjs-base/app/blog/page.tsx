@@ -1,8 +1,8 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { getEntries, getPageBySlug } from "@/lib/cms";
 import PageSections from "@/components/PageSections";
 
-export const revalidate = 0;
+export const revalidate = 3600;
 async function getBlogLandingPage() {
   for (const slug of ["blog", "resources"]) {
     try { return await getPageBySlug("blog", slug); } catch { /* Try the next common blog landing page slug. */ }

@@ -18,6 +18,10 @@ export const Errors = {
   badRequest: (msg = "Bad request", details?: unknown) =>
     new ApiError(400, "BAD_REQUEST", msg, details),
   conflict: (msg = "Conflict") => new ApiError(409, "CONFLICT", msg),
+  rateLimited: (msg = "Too many requests") =>
+    new ApiError(429, "RATE_LIMITED", msg),
+  unavailable: (msg = "Service temporarily unavailable") =>
+    new ApiError(503, "SERVICE_UNAVAILABLE", msg),
   internal: (msg = "Internal server error") =>
     new ApiError(500, "INTERNAL", msg),
 };

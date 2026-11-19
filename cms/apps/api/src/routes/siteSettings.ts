@@ -1,8 +1,8 @@
-﻿import type { FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
-import { db, sites, siteSettings } from "@cms/db";
-import { requireApiKey, requireSuperAdmin } from "../middleware/auth.js";
+import { db, sites, siteSettings, events } from "@cms/db";
+import { requireApiKey, requireSiteRole } from "../middleware/auth.js";
 import { Errors } from "../lib/errors.js";
 
 const settingSchema = z.object({
@@ -34,7 +34,7 @@ export async function siteSettingsRoutes(app: FastifyInstance): Promise<void> {
         .select({ key: siteSettings.key, value: siteSettings.value })
         .from(siteSettings)
         .where(eq(siteSettings.siteId, site.id));
-      const publicKeys = new Set(["public_url", "brand_name", "tagline", "announcement_text", "announcement_phone_label", "announcement_fallback_text", "nav_services_label", "nav_locations_label", "nav_resources_label", "nav_faq_label", "nav_more_label", "header_cta_label", "footer_note", "footer_explore_title", "footer_services_label", "footer_locations_label", "footer_resources_label", "footer_faq_label", "footer_contact_title", "footer_estimate_label", "footer_copyright_text", "home_heading", "home_intro", "home_cta_label", "logo_url", "home_hero_image_url", "home_hero_image_alt", "phone", "contact_email", "service_area", "area_name", "facebook_url", "instagram_url", "linkedin_url", "primary_color", "accent_color", "font_style"]);
+      const publicKeys = new Set(["public_url", "brand_name", "tagline", "announcement_text", "announcement_phone_label", "announcement_fallback_text", "nav_services_label", "nav_locations_label", "nav_resources_label", "nav_faq_label", "nav_more_label", "header_cta_label", "footer_note", "footer_explore_title", "footer_services_label", "footer_locations_label", "footer_resources_label", "footer_faq_label", "footer_contact_title", "footer_estimate_label", "footer_copyright_text", "home_heading", "home_intro", "home_cta_label", "logo_url", "home_hero_image_url", "home_hero_image_alt", "phone", "secondary_phone", "contact_email", "address", "business_hours", "service_area", "area_name", "facebook_url", "instagram_url", "linkedin_url", "primary_color", "accent_color", "font_style", "layout_style", "default_seo_title_template", "default_seo_description", "default_og_image", "default_robots"]);
       const settings: Record<string, unknown> = {};
       for (const row of rows) {
         if (publicKeys.has(row.key)) settings[row.key] = row.value;
@@ -46,7 +46,7 @@ export async function siteSettingsRoutes(app: FastifyInstance): Promise<void> {
   // Set multiple settings at once (upsert)
   app.put(
     "/api/admin/sites/:siteId/settings",
-    { preHandler: requireSuperAdmin },
+    { preHandler: requireSiteRole("client_admin") },
     async (req) => {
       const { siteId } = req.params as { siteId: string };
       const parsed = bulkSettingsSchema.safeParse(req.body);
@@ -71,6 +71,7 @@ export async function siteSettingsRoutes(app: FastifyInstance): Promise<void> {
               set: { value: item.value, updatedAt: new Date() },
             });
         }
+        await tx.insert(events).values({ siteId, type: "settings.updated", payload: {} });
       });
 
       return { ok: true, count: parsed.data.settings.length };
@@ -80,7 +81,7 @@ export async function siteSettingsRoutes(app: FastifyInstance): Promise<void> {
   // List all settings
   app.get(
     "/api/admin/sites/:siteId/settings",
-    { preHandler: requireSuperAdmin },
+    { preHandler: requireSiteRole("viewer") },
     async (req) => {
       const { siteId } = req.params as { siteId: string };
       const rows = await db
@@ -94,16 +95,17 @@ export async function siteSettingsRoutes(app: FastifyInstance): Promise<void> {
   // Delete a setting
   app.delete(
     "/api/admin/sites/:siteId/settings/:key",
-    { preHandler: requireSuperAdmin },
+    { preHandler: requireSiteRole("client_admin") },
     async (req) => {
       const { siteId, key } = req.params as { siteId: string; key: string };
-      const [deleted] = await db
-        .delete(siteSettings)
-        .where(
-          and(eq(siteSettings.siteId, siteId), eq(siteSettings.key, key))
-        )
-        .returning({ id: siteSettings.id });
-      if (!deleted) throw Errors.notFound("Setting not found");
+      await db.transaction(async (tx) => {
+        const [deleted] = await tx
+          .delete(siteSettings)
+          .where(and(eq(siteSettings.siteId, siteId), eq(siteSettings.key, key)))
+          .returning({ id: siteSettings.id });
+        if (!deleted) throw Errors.notFound("Setting not found");
+        await tx.insert(events).values({ siteId, type: "settings.updated", payload: {} });
+      });
       return { deleted: true };
     }
   );

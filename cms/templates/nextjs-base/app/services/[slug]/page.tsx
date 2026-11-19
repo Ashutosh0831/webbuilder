@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getEntry, getPageBySlug, getPublicSiteSettings } from "@/lib/cms";
 import PageSections from "@/components/PageSections";
 
-export const revalidate = 0;
+export const revalidate = 3600;
 
 async function getServicePage(slug: string) {
   for (const section of ["services", "service"]) {

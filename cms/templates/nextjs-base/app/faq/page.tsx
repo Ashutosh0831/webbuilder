@@ -1,7 +1,7 @@
-﻿import { getEntries, getPageBySlug } from "@/lib/cms";
+import { getEntries, getPageBySlug } from "@/lib/cms";
 import PageSections from "@/components/PageSections";
 
-export const revalidate = 0;
+export const revalidate = 3600;
 async function getFaqPage() {
   for (const slug of ["faq", "faqs", "frequently-asked-questions"]) {
     try { return await getPageBySlug("faq", slug); } catch { /* Try the next common FAQ page slug. */ }
